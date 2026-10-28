@@ -1052,4 +1052,113 @@
     <string name="vm_altre_shelly">Op het adres van de Shelly zit een andere Shelly: ik haal er geen gegevens op</string>
     <!-- A la Connexió, després de «Prova»: el Shelly trobat no és el que hi havia -->
     <string name="connecta_shelly_diferent">Dit is niet de Shelly van eerst. Als je hem opslaat, komen de nieuwe gegevens van deze.</string>
+
+    <!-- ===== Els endolls amb mesura (maqueta 19, 1.2.0) ===== -->
+    <!-- Com se sap que una vegada és d'un aparell: el seu endoll era encès -->
+    <string name="fitxa_endoll">volgens de stekker</string>
+    <!-- La marca petita al costat del nom d'un aparell que té un endoll amb mesura -->
+    <string name="endoll_xip">stekker</string>
+    <!-- La Connexió: la targeta dels endolls -->
+    <string name="endolls_titol">Stekkers met meting</string>
+    <string name="endolls_nota">Een stekker met meting aan een apparaat (een TP-Link Tapo P110 of P115, of een Shelly Plug S) vertelt Wakker wanneer het aanstaat en hoeveel het verbruikt: het apparaat leert zichzelf aan, zonder je iets te vragen. Tapo werkt alleen thuis; Shelly ook via de Shelly-cloud.</string>
+    <string name="endolls_cal_compte">Voor een Tapo is het Tapo-account nodig: vul het e-mailadres en het wachtwoord in.</string>
+    <string name="endolls_compte_nota">Een Tapo vraagt om het e-mailadres en wachtwoord van je Tapo-account. Wakker bewaart er alleen een vingerafdruk (een hash) van, niet het wachtwoord; met die vingerafdruk kun je thuis met je Tapo\'s praten, dus bewaar de back-up op een privéplek. In de Tapo-app moet «Compatibiliteit met derden» aanstaan (in je profiel, Tapo Lab).</string>
+    <!-- %1$s: el correu del compte -->
+    <string name="endolls_compte_connectat">Tapo-account gekoppeld: %1$s</string>
+    <string name="endolls_correu">E-mail van het Tapo-account</string>
+    <string name="endolls_contrasenya">Tapo-wachtwoord</string>
+    <string name="endolls_canvia_compte">Ander account</string>
+    <string name="endolls_desconnecta">Ontkoppelen</string>
+    <string name="endolls_busca">Zoeken</string>
+    <string name="endolls_buscant">Stekkers zoeken op de wifi…</string>
+    <string name="endolls_cap_trobat">Geen gevonden op de wifi. Als de stekker er wel is, typ dan het adres in.</string>
+    <string name="endolls_adreca">Adres van de stekker</string>
+    <string name="endolls_afegeix">Toevoegen</string>
+    <string name="endolls_provant">Verbinden met de stekker…</string>
+    <!-- %1$s: l'adreça -->
+    <string name="endolls_no_arribo">Ik bereik de stekker niet op %1$s</string>
+    <string name="endolls_credencials">De stekker accepteert dit e-mailadres en wachtwoord niet. Controleer ze in de Tapo-app, en of «Compatibiliteit met derden» aanstaat.</string>
+    <!-- %1$s: el nom de l'endoll -->
+    <string name="endolls_afegit">Stekker «%1$s» toegevoegd</string>
+    <string name="endolls_a_quin">Aan welk apparaat?</string>
+    <string name="endolls_cap_aparell">Geen apparaat</string>
+    <!-- %1$s: els W -->
+    <string name="endolls_ara_w">nu %1$s W</string>
+    <string name="endolls_no_respon">antwoordt niet</string>
+    <string name="endolls_treu">Verwijderen</string>
+    <!-- %1$s: el nom de l'endoll -->
+    <string name="endolls_confirma_treu">Stekker «%1$s» verwijderen? Wat de app ervan heeft geleerd, blijft.</string>
+    <!-- A la llista de seccions de la Configuració -->
+    <plurals name="config_n_endolls">
+        <item quantity="one">%d stekker</item>
+        <item quantity="other">%d stekkers</item>
+    </plurals>
+    <!-- Aparells: la franja de dalt -->
+    <plurals name="aparells_amb_endoll">
+        <item quantity="one">%d apparaat met stekker. Het verbruik is gemeten, niet geschat.</item>
+        <item quantity="other">%d apparaten met stekker. Het verbruik is gemeten, niet geschat.</item>
+    </plurals>
+    <string name="aparells_apren_endoll">leert met de stekker</string>
+    <!-- La fitxa: l'endoll de l'aparell -->
+    <!-- %1$s: el model; %2$s: des de quin dia -->
+    <string name="fitxa_endoll_desde">%1$s · sinds %2$s</string>
+    <string name="fitxa_apres_titol">Wat de app ervan heeft geleerd</string>
+    <!-- %1$d: les encertades; %2$d: les seves -->
+    <string name="fitxa_apres_seves">%1$d van %2$d</string>
+    <string name="fitxa_apres_seves_text">keren van dit apparaat die Wakker al zelf herkende</string>
+    <string name="fitxa_apres_demes_text">van andere apparaten die Wakker eraan toeschreef</string>
+    <string name="fitxa_apres_nota">Dit corrigeert de app zelf, zonder je iets te vragen. Zodra ze een week lang een paar keer achter elkaar goed zit, zegt ze dat je de stekker kunt verplaatsen.</string>
+    <string name="fitxa_apres_llegenda_app">Wakker alleen</string>
+    <string name="fitxa_apres_llegenda_endoll">de stekker</string>
+    <string name="fitxa_apres_no_quadra">klopt niet</string>
+    <string name="fitxa_apres_encara">Nog niet genoeg dagen met de stekker om te vergelijken.</string>
+    <string name="fitxa_mesura_titol">Gemeten door de stekker</string>
+    <string name="fitxa_mesura_dia">kWh per dag</string>
+    <plurals name="fitxa_mesura_dies">
+        <item quantity="one">%d hele dag</item>
+        <item quantity="other">%d hele dagen</item>
+    </plurals>
+    <string name="fitxa_mesura_ences">Aan</string>
+    <!-- %1$s: els W -->
+    <string name="fitxa_mesura_hores">per dag · %1$s W</string>
+    <string name="fitxa_mesura_espera">Stand-by</string>
+    <!-- %1$s: els euros -->
+    <string name="fitxa_mesura_espera_valor">%1$s per jaar</string>
+    <string name="fitxa_mesura_any">Per jaar</string>
+    <string name="fitxa_mesura_nota">In het totaal ziet Wakker niets aangaan dat minder dan 250 W trekt. Met de stekker is het verbruik exact.</string>
+    <!-- Per fer: moure l'endoll -->
+    <!-- %1$s: el nom de l'endoll -->
+    <string name="perfer_endoll_seccio">De stekker «%1$s»</string>
+    <!-- %1$s: el nom de l'aparell -->
+    <string name="perfer_endoll_apres">%1$s is aangeleerd</string>
+    <!-- %1$d: les vegades de la setmana -->
+    <string name="perfer_endoll_apres_text">de afgelopen week alles zelf herkend: %1$d van %1$d, en niets van een ander apparaat. Wat de app heeft geleerd, blijft.</string>
+    <string name="perfer_endoll_on">Waar zet je hem nu?</string>
+    <string name="perfer_endoll_deixa">Laat hem zitten</string>
+    <string name="perfer_endoll_sense_apres">nog nooit herkend</string>
+    <!-- %1$d: les vegades -->
+    <plurals name="perfer_endoll_vegades">
+        <item quantity="one">%d keer deze maand: daar valt het meest te leren</item>
+        <item quantity="other">%d keer deze maand: daar valt het meest te leren</item>
+    </plurals>
+    <!-- %1$s: el nom de l'aparell -->
+    <string name="sense_nom_no_era_endoll">was niet %1$s, volgens de stekker</string>
+    <!-- %1$s: el nom de l'endoll -->
+    <string name="fitxa_endoll_titol">Stekker «%1$s»</string>
+    <!-- Una lectura vella d'un endoll: %1$s l'hora, %2$s els W -->
+    <string name="endolls_de_les">van %1$s, %2$s W</string>
+    <string name="fitxa_endoll_esperant">Nog geen heel uur gemeten: morgen is de eerste dag er.</string>
+    <string name="fitxa_mesurat_endoll">deze maand · gemeten door de stekker</string>
+    <string name="perfer_endoll_cap_vegada">geen enkele keer deze maand</string>
+    <!-- %1$s: el nom de l'endoll; %2$s: l'aparell on va -->
+    <string name="perfer_endoll_confirma">Stekker «%1$s» naar %2$s verplaatsen? Het huidige apparaat houdt wat het heeft geleerd.</string>
+    <string name="perfer_endoll_mou">Verplaatsen</string>
+    <string name="endolls_tinc_tapo">Ik heb een Tapo: account instellen</string>
+    <string name="endolls_es_desa_sol">Stekkers worden vanzelf opgeslagen: «Opslaan» hieronder is niet nodig.</string>
+    <!-- %1$s: el nom de l'altre endoll -->
+    <string name="endolls_ja_te">heeft al stekker «%1$s»</string>
+    <string name="endolls_que_es">Een stekker met meting aan een apparaat: de app leert het vanzelf</string>
+    <string name="endolls_despres">Zoek daarna de stekker of typ het adres: het account wordt opgeslagen zodra een stekker het accepteert.</string>
+    <string name="endolls_canvia">Wijzigen</string>
+    <string name="endolls_sense_mesura">Deze Tapo meet geen verbruik (een P100 of P105): je hebt een P110 of P115 nodig.</string>
 </resources>

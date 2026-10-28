@@ -1267,4 +1267,113 @@
     <string name="vm_altre_shelly">A l\'adreça del Shelly hi ha un altre Shelly: no en recullo les dades</string>
     <!-- A la Connexió, després de «Prova»: el Shelly trobat no és el que hi havia -->
     <string name="connecta_shelly_diferent">Aquest no és el Shelly d\'abans. Si el deses, les dades noves vindran d\'aquest.</string>
+
+    <!-- ===== Els endolls amb mesura (maqueta 19, 1.2.0) ===== -->
+    <!-- Com se sap que una vegada és d'un aparell: el seu endoll era encès -->
+    <string name="fitxa_endoll">segons l\'endoll</string>
+    <!-- La marca petita al costat del nom d'un aparell que té un endoll amb mesura -->
+    <string name="endoll_xip">endoll</string>
+    <!-- La Connexió: la targeta dels endolls -->
+    <string name="endolls_titol">Endolls amb mesura</string>
+    <string name="endolls_nota">Un endoll amb mesura posat a un aparell (un TP-Link Tapo P110 o P115, o un Shelly Plug S) diu a Wakker quan és encès i quant gasta: l\'aparell s\'aprèn sol, sense preguntar-te res. Els Tapo només funcionen a casa; els Shelly, també pel núvol de Shelly.</string>
+    <string name="endolls_cal_compte">Per a un Tapo cal el compte de Tapo: escriu-ne el correu i la contrasenya.</string>
+    <string name="endolls_compte_nota">Un Tapo demana el correu i la contrasenya del compte de Tapo. Wakker en desa només una empremta (un hash), no la contrasenya; amb l\'empremta es pot parlar amb els teus Tapo a casa, així que guarda la còpia de seguretat en un lloc privat. A l\'app de Tapo cal tenir activada la compatibilitat amb tercers (al teu perfil, Tapo Lab).</string>
+    <!-- %1$s: el correu del compte -->
+    <string name="endolls_compte_connectat">Compte de Tapo connectat: %1$s</string>
+    <string name="endolls_correu">Correu del compte de Tapo</string>
+    <string name="endolls_contrasenya">Contrasenya de Tapo</string>
+    <string name="endolls_canvia_compte">Canvia el compte</string>
+    <string name="endolls_desconnecta">Desconnecta</string>
+    <string name="endolls_busca">Busca\'n</string>
+    <string name="endolls_buscant">Buscant endolls a la wifi…</string>
+    <string name="endolls_cap_trobat">No n\'he trobat cap a la wifi. Si l\'endoll hi és, escriu-ne l\'adreça.</string>
+    <string name="endolls_adreca">Adreça de l\'endoll</string>
+    <string name="endolls_afegeix">Afegeix</string>
+    <string name="endolls_provant">Parlant amb l\'endoll…</string>
+    <!-- %1$s: l'adreça -->
+    <string name="endolls_no_arribo">No arribo a l\'endoll a %1$s</string>
+    <string name="endolls_credencials">L\'endoll no accepta aquest correu i contrasenya. Comprova\'ls a l\'app de Tapo, i que hi tinguis activada la compatibilitat amb tercers.</string>
+    <!-- %1$s: el nom de l'endoll -->
+    <string name="endolls_afegit">Endoll «%1$s» afegit</string>
+    <string name="endolls_a_quin">A quin aparell?</string>
+    <string name="endolls_cap_aparell">Cap aparell</string>
+    <!-- %1$s: els W -->
+    <string name="endolls_ara_w">ara %1$s W</string>
+    <string name="endolls_no_respon">no respon</string>
+    <string name="endolls_treu">Treu</string>
+    <!-- %1$s: el nom de l'endoll -->
+    <string name="endolls_confirma_treu">Treure l\'endoll «%1$s»? El que l\'app n\'ha après es queda.</string>
+    <!-- A la llista de seccions de la Configuració -->
+    <plurals name="config_n_endolls">
+        <item quantity="one">%d endoll</item>
+        <item quantity="other">%d endolls</item>
+    </plurals>
+    <!-- Aparells: la franja de dalt -->
+    <plurals name="aparells_amb_endoll">
+        <item quantity="one">%d aparell amb endoll. El que gasta és mesurat, no estimat.</item>
+        <item quantity="other">%d aparells amb endoll. El que gasten és mesurat, no estimat.</item>
+    </plurals>
+    <string name="aparells_apren_endoll">aprèn amb l\'endoll</string>
+    <!-- La fitxa: l'endoll de l'aparell -->
+    <!-- %1$s: el model; %2$s: des de quin dia -->
+    <string name="fitxa_endoll_desde">%1$s · des de %2$s</string>
+    <string name="fitxa_apres_titol">Què n\'ha après</string>
+    <!-- %1$d: les encertades; %2$d: les seves -->
+    <string name="fitxa_apres_seves">%1$d de %2$d</string>
+    <string name="fitxa_apres_seves_text">vegades seves que Wakker ja reconeixia sol</string>
+    <string name="fitxa_apres_demes_text">d\'altres aparells que Wakker li donava</string>
+    <string name="fitxa_apres_nota">Ho corregeix sol, sense preguntar-te res. Quan l\'encerti unes quantes vegades seguides durant una setmana, et dirà que pots moure l\'endoll.</string>
+    <string name="fitxa_apres_llegenda_app">Wakker sol</string>
+    <string name="fitxa_apres_llegenda_endoll">l\'endoll</string>
+    <string name="fitxa_apres_no_quadra">no quadra</string>
+    <string name="fitxa_apres_encara">Encara no hi ha prou dies amb l\'endoll per comparar.</string>
+    <string name="fitxa_mesura_titol">Mesurat per l\'endoll</string>
+    <string name="fitxa_mesura_dia">kWh al dia</string>
+    <plurals name="fitxa_mesura_dies">
+        <item quantity="one">%d dia sencer</item>
+        <item quantity="other">%d dies sencers</item>
+    </plurals>
+    <string name="fitxa_mesura_ences">Encès</string>
+    <!-- %1$s: els W -->
+    <string name="fitxa_mesura_hores">al dia · %1$s W</string>
+    <string name="fitxa_mesura_espera">En espera</string>
+    <!-- %1$s: els euros -->
+    <string name="fitxa_mesura_espera_valor">%1$s l\'any</string>
+    <string name="fitxa_mesura_any">L\'any</string>
+    <string name="fitxa_mesura_nota">Al total, Wakker no veu encendre\'s el que fa menys de 250 W. Amb l\'endoll, el consum és exacte.</string>
+    <!-- Per fer: moure l'endoll -->
+    <!-- %1$s: el nom de l'endoll -->
+    <string name="perfer_endoll_seccio">L\'endoll «%1$s»</string>
+    <!-- %1$s: el nom de l'aparell -->
+    <string name="perfer_endoll_apres">%1$s ja està après</string>
+    <!-- %1$d: les vegades de la setmana -->
+    <string name="perfer_endoll_apres_text">l\'última setmana l\'ha encertat sol: %1$d de %1$d, i cap d\'un altre aparell. El que ha après es queda.</string>
+    <string name="perfer_endoll_on">On el poses ara?</string>
+    <string name="perfer_endoll_deixa">Deixa\'l on és</string>
+    <string name="perfer_endoll_sense_apres">encara no l\'ha reconegut mai</string>
+    <!-- %1$d: les vegades -->
+    <plurals name="perfer_endoll_vegades">
+        <item quantity="one">%d vegada aquest mes: on més pot aprendre</item>
+        <item quantity="other">%d vegades aquest mes: on més pot aprendre</item>
+    </plurals>
+    <!-- %1$s: el nom de l'aparell -->
+    <string name="sense_nom_no_era_endoll">no era %1$s, segons l\'endoll</string>
+    <!-- %1$s: el nom de l'endoll -->
+    <string name="fitxa_endoll_titol">Endoll «%1$s»</string>
+    <!-- Una lectura vella d'un endoll: %1$s l'hora, %2$s els W -->
+    <string name="endolls_de_les">de les %1$s, %2$s W</string>
+    <string name="fitxa_endoll_esperant">Encara no té cap hora sencera mesurada: demà hi haurà el primer dia.</string>
+    <string name="fitxa_mesurat_endoll">aquest mes · mesurat per l\'endoll</string>
+    <string name="perfer_endoll_cap_vegada">cap vegada aquest mes</string>
+    <!-- %1$s: el nom de l'endoll; %2$s: l'aparell on va -->
+    <string name="perfer_endoll_confirma">Moure l\'endoll «%1$s» a %2$s? L\'aparell d\'ara es queda el que ha après.</string>
+    <string name="perfer_endoll_mou">Mou-lo</string>
+    <string name="endolls_tinc_tapo">Tinc un Tapo: posa-hi el compte</string>
+    <string name="endolls_es_desa_sol">Els endolls es desen sols: no cal el «Desa» de sota.</string>
+    <!-- %1$s: el nom de l'altre endoll -->
+    <string name="endolls_ja_te">ja té l\'endoll «%1$s»</string>
+    <string name="endolls_que_es">Un endoll amb mesura a un aparell: l\'app l\'aprèn sol</string>
+    <string name="endolls_despres">Després, busca l\'endoll o escriu-ne l\'adreça: el compte es desa quan un endoll l\'accepta.</string>
+    <string name="endolls_canvia">Canvia</string>
+    <string name="endolls_sense_mesura">Aquest Tapo no mesura el consum (un P100 o P105): cal un P110 o un P115.</string>
 </resources>

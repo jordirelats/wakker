@@ -49,6 +49,19 @@ import cat.jordi.wakker.dades.mediana
 import cat.jordi.wakker.dades.missatge
 import cat.jordi.wakker.dades.mou
 import cat.jordi.wakker.dades.iniciPeriode
+import cat.jordi.wakker.dades.Endoll
+import cat.jordi.wakker.dades.PeriodeEndoll
+import cat.jordi.wakker.dades.PropostaMoure
+import cat.jordi.wakker.endolls.CredencialsDolentes
+import cat.jordi.wakker.endolls.DescobrimentTapo
+import cat.jordi.wakker.endolls.EndollTrobat
+import cat.jordi.wakker.endolls.ErrorEndoll
+import cat.jordi.wakker.endolls.Klap
+import cat.jordi.wakker.endolls.LecturaEndoll
+import cat.jordi.wakker.endolls.ShellyEndoll
+import cat.jordi.wakker.endolls.Tapo
+import cat.jordi.wakker.shelly.buscaEndollsShelly
+import kotlinx.coroutines.async
 import cat.jordi.wakker.shelly.Lectura
 import cat.jordi.wakker.shelly.Origen
 import kotlinx.coroutines.CancellationException
@@ -117,7 +130,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
     }
 
     /** Quantes coses hi ha a «Per fer»: el globus de la pestanya. */
-    val pendents: Int get() = (senseNom?.vegades?.size ?: 0) + preguntes.size + repetits.size
+    val pendents: Int get() = (senseNom?.vegades?.size ?: 0) + preguntes.size + repetits.size + propostesMoure.size
 
     /** La lectura en directe; null si ara mateix no s'arriba al Shelly ni pel núvol. */
     var lectura by mutableStateOf<Lectura?>(null)
@@ -221,6 +234,25 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
     /** El resum de la setmana passada, mentre l'usuari no l'ha vist (maqueta 15). */
     var resumSetmana by mutableStateOf<ResumSetmana?>(null)
         private set
+
+    // ---------- Els endolls amb mesura (maqueta 19) ----------
+    var endolls by mutableStateOf<List<Endoll>>(emptyList())
+        private set
+    var periodesEndoll by mutableStateOf<List<PeriodeEndoll>>(emptyList())
+        private set
+    var lecturesEndolls by mutableStateOf<Map<Long, LecturaEndoll>>(emptyMap())
+        private set
+
+    /** Els endolls que ja es poden moure a un altre aparell (Per fer). */
+    var propostesMoure by mutableStateOf<List<PropostaMoure>>(emptyList())
+        private set
+
+    /** L'endoll que té posat cada aparell ara. */
+    val endollDe: Map<Long, Endoll>
+        get() {
+            val perId = endolls.associateBy { it.id }
+            return periodesEndoll.filter { it.finsA == null }.mapNotNull { p -> perId[p.endollId]?.let { p.aparellId to it } }.toMap()
+        }
 
     /** La caça del sempre encès (maqueta 15): el que ha baixat la potència mentre la pantalla és oberta, del més nou al més vell. */
     var baixades by mutableStateOf<List<Baixada>>(emptyList())
@@ -401,6 +433,20 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
                     delay(60_000L)
                 }
             }
+            launch {
+                // Els endolls amb mesura (maqueta 19), en un bucle a part perquè un que no respon no aturi els watts d'Ara: a
+                // casa cada 15 s; des de fora, els Shelly pel núvol cada minut
+                var volta = 0
+                while (isActive) {
+                    val l = lectura
+                    if (endolls.isNotEmpty()) {
+                        if (l?.origen == Origen.LOCAL) lecturesEndolls = repo.llegeixEndolls()
+                        else if (l?.origen == Origen.NUVOL && volta % 4 == 0) lecturesEndolls = repo.llegeixEndolls(nomesNuvol = true)
+                    }
+                    volta++
+                    delay(15_000L)
+                }
+            }
         }
     }
 
@@ -414,6 +460,8 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         try {
             errorSincronitzacio = try {
                 repo.sincronitza()
+                // L'historial dels endolls (maqueta 19), si no és des de fora
+                if (lectura?.origen != Origen.NUVOL) runCatching { repo.sincronitzaEndolls() }
                 null
             } catch (e: CancellationException) {
                 throw e
@@ -448,6 +496,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
             // Des de fora (pel núvol) el Shelly de casa no respon: no cal esperar-lo cada minut
             if (l?.origen != Origen.NUVOL) try {
                 repo.sincronitza()
+                repo.sincronitzaEndolls()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -479,6 +528,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
                 repo.obertes(), repo.senseNom(),
                 resumDeLaSetmana(),
                 repo.aparellsLinia(),
+                repo.endolls(), repo.periodesEndoll(), repo.propostesMoure(),
             )
         } } catch (e: CancellationException) {
             throw e
@@ -504,6 +554,10 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         senseNom = dades.senseNom
         resumSetmana = dades.resumSetmana
         aparellsLinia = dades.aparellsLinia
+        endolls = dades.endolls
+        periodesEndoll = dades.periodesEndoll
+        propostesMoure = dades.propostesMoure
+        lecturesEndolls = repo.lecturesEndolls
         fonsW = dades.fons
         resumMes = dades.mes
         aparells = dades.aparells
@@ -628,6 +682,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         val aEntrenar: List<Aparell>,
         val referenciesLinia: Map<Long, Referencia>, val repetits: List<Repetit>,
         val obertes: Obertes, val senseNom: SenseNom, val resumSetmana: ResumSetmana?, val aparellsLinia: List<Aparell>,
+        val endolls: List<Endoll>, val periodesEndoll: List<PeriodeEndoll>, val propostesMoure: List<PropostaMoure>,
     )
 
     fun refresca() {
@@ -1053,6 +1108,159 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
     }
 
     /** Després de canviar la configuració: torna a començar les lectures. */
+    // ---------- Els endolls amb mesura (maqueta 19) ----------
+
+    /** Si hi ha el compte de Tapo (com a estat, perquè la pantalla canviï en desar-lo). */
+    var teTapo by mutableStateOf(config.teTapo)
+        private set
+    var buscantEndolls by mutableStateOf(false)
+        private set
+    var endollsTrobats by mutableStateOf<List<EndollTrobat>>(emptyList())
+        private set
+    var provantEndoll by mutableStateOf(false)
+        private set
+    var missatgeEndolls by mutableStateOf<TextRecurs?>(null)
+        private set
+
+    /** Busca els endolls de la wifi (uns 4 s): els Tapo per UDP i els Shelly per mDNS i preguntant a cada adreça. */
+    fun buscaEndolls() {
+        if (buscantEndolls) return
+        viewModelScope.launch {
+            buscantEndolls = true
+            missatgeEndolls = null
+            endollsTrobats = withContext(Dispatchers.IO) {
+                val tapo = async { runCatching { DescobrimentTapo.busca(4000) }.getOrDefault(emptyList()) }
+                val shelly = async { runCatching { buscaEndollsShelly(getApplication(), config.host) }.getOrDefault(emptyList()) }
+                tapo.await() + shelly.await()
+            }
+            buscantEndolls = false
+            if (endollsTrobats.isEmpty()) missatgeEndolls = TextRecurs(R.string.endolls_cap_trobat)
+        }
+    }
+
+    /**
+     * Afegeix un endoll per l'adreça. Primer es mira si és un Shelly (respon al RPC sense cap compte); si no, un Tapo, amb el
+     * resum del compte (el nou, si es dona el correu i la contrasenya; si no, el desat). Si l'endoll l'accepta, es desa el
+     * compte (només el resum) i l'endoll, i se'n llegeix l'historial.
+     */
+    fun afegeixEndoll(host: String, correu: String? = null, contrasenya: String? = null) {
+        if (provantEndoll) return
+        viewModelScope.launch {
+            provantEndoll = true
+            missatgeEndolls = null
+            // L'adreça neta: sense «http://», barres ni res més (ve d'un camp lliure)
+            val net = netejaHost(host)
+            if (net == null) {
+                provantEndoll = false
+                missatgeEndolls = TextRecurs(R.string.endolls_no_arribo, host.trim())
+                return@launch
+            }
+            val shelly = withContext(Dispatchers.IO) { runCatching { ShellyEndoll(net).info() }.getOrNull() }
+            val nou = !correu.isNullOrBlank() && !contrasenya.isNullOrBlank()
+            val resum = if (nou) Klap.resumHex(correu!!.trim(), contrasenya!!) else config.tapoResum
+            if (shelly == null && resum.isBlank()) {
+                provantEndoll = false
+                missatgeEndolls = TextRecurs(R.string.endolls_cal_compte)
+                return@launch
+            }
+            // Un Tapo: qui és i que mesuri (un P100 no té get_energy_usage)
+            val r = if (shelly != null) Result.success(shelly) else withContext(Dispatchers.IO) {
+                runCatching { Tapo(net, Klap.deHex(resum)).let { t -> t.info().also { t.lectura() } } }
+            }
+            provantEndoll = false
+            r.onSuccess { info ->
+                // El compte de Tapo només es desa si l'ha acceptat un Tapo
+                if (shelly == null && resum != config.tapoResum) {
+                    config.tapoResum = resum
+                    config.tapoCorreu = correu?.trim().orEmpty()
+                    repo.oblidaSessionsEndolls()
+                }
+                if (shelly == null) teTapo = true
+                withContext(Dispatchers.IO) { repo.afegeixEndoll(info) }
+                val avis = TextRecurs(R.string.endolls_afegit, info.nom.ifBlank { info.model })
+                missatgeEndolls = avis
+                endollsTrobats = endollsTrobats.filter { it.mac != info.mac }
+                refrescaEndolls()
+                withContext(Dispatchers.IO) { runCatching { repo.sincronitzaEndolls(forca = true) } }
+                refrescaAra()
+                // El missatge d'èxit no es queda per sempre
+                launch {
+                    delay(8_000)
+                    if (missatgeEndolls === avis) missatgeEndolls = null
+                }
+            }.onFailure { e ->
+                missatgeEndolls = when {
+                    e is CredencialsDolentes || (e is ErrorEndoll && e.credencials) -> TextRecurs(R.string.endolls_credencials)
+                    e is ErrorEndoll && e.codi == -1002 -> TextRecurs(R.string.endolls_sense_mesura)
+                    else -> TextRecurs(R.string.endolls_no_arribo, net)
+                }
+            }
+        }
+    }
+
+    /** Obre la Configuració a la Connexió (des de la fitxa d'un aparell amb endoll). */
+    fun obreConnexio() {
+        seccioConfig = SeccioConfig.CONNEXIO
+        pantalla = Pantalla.CONNECTA
+    }
+
+    /** L'adreça d'un endoll tal com l'ha escrita l'usuari: sense l'esquema, el camí ni res després; null si no serveix. */
+    private fun netejaHost(s: String): String? {
+        val net = s.trim().replaceFirst(Regex("^[a-zA-Z]+://"), "").substringBefore('/').substringBefore('?').substringBefore('#')
+        if (net.isBlank() || net.contains('@') || net.any { it.isWhitespace() }) return null
+        return net
+    }
+
+    /** L'endoll passa a mesurar un aparell (o cap). */
+    fun posaEndollA(endollId: Long, aparellId: Long?) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { repo.posaEndollA(endollId, aparellId) }
+            refrescaEndolls()
+            refrescaAra()
+        }
+    }
+
+    /** L'endoll passa a un aparell nou, que es crea aquí mateix (des de «Tots els aparells…»). */
+    fun posaEndollANou(endollId: Long, nou: Aparell) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val id = repo.afegeixAparell(nou)
+                repo.posaEndollA(endollId, id)
+            }
+            refrescaEndolls()
+            refrescaAra()
+        }
+    }
+
+    fun esborraEndoll(id: Long) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { repo.esborraEndoll(id) }
+            refrescaEndolls()
+            refrescaAra()
+        }
+    }
+
+    /** Fora el compte de Tapo: els endolls es queden, però no es llegiran fins que se'n torni a posar un. */
+    fun desconnectaTapo() {
+        config.tapoResum = ""
+        config.tapoCorreu = ""
+        repo.oblidaSessionsEndolls()
+        lecturesEndolls = emptyMap()
+        teTapo = false
+    }
+
+    /** «Deixa'l on és»: la proposta de moure l'endoll no es torna a fer. */
+    fun ignoraMoure(p: PropostaMoure) {
+        repo.ignoraMoure(p.endoll.id, p.aparell.id)
+        propostesMoure = propostesMoure - p
+    }
+
+    private suspend fun refrescaEndolls() {
+        val (e, pe) = withContext(Dispatchers.IO) { repo.endolls() to repo.periodesEndoll() }
+        endolls = e
+        periodesEndoll = pe
+    }
+
     fun configuracioDesada() {
         // El primer cop, a la pantalla principal; després, a la llista de seccions de la Configuració
         if (seccioConfig != null && config.configurat) seccioConfig = null else pantalla = Pantalla.PRINCIPAL

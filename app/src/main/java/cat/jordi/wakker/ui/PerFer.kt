@@ -24,7 +24,11 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.PowerSettingsNew
@@ -67,6 +71,7 @@ import cat.jordi.wakker.dades.Referencia
 import cat.jordi.wakker.dades.Repetit
 import cat.jordi.wakker.dades.VegadaSenseNom
 import cat.jordi.wakker.dades.endevina
+import cat.jordi.wakker.dades.PropostaMoure
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -90,7 +95,7 @@ fun PantallaPerFer(vm: WakkerViewModel) {
         onDispose { vista.keepScreenOn = false }
     }
     val senseNom = vm.senseNom?.vegades.orEmpty()
-    val res = senseNom.isEmpty() && vm.repetits.isEmpty() && vm.preguntes.isEmpty()
+    val res = senseNom.isEmpty() && vm.repetits.isEmpty() && vm.preguntes.isEmpty() && vm.propostesMoure.isEmpty()
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
@@ -110,6 +115,8 @@ fun PantallaPerFer(vm: WakkerViewModel) {
                 }
             }
         }
+        // Els endolls que ja es poden moure (maqueta 19)
+        vm.propostesMoure.forEach { p -> key("e${p.endoll.id}") { TargetaMoure(vm, p) } }
         // El que més gasta i encara no té nom (maqueta 15), cada vegada una targeta
         senseNom.forEach { x -> key(x.vegada.ts) { TargetaSenseNom(vm, x) } }
         // El que es repeteix sempre igual (maqueta 12)
@@ -277,9 +284,11 @@ private fun TargetaSenseNom(vm: WakkerViewModel, x: VegadaSenseNom) {
     val zona = ZoneId.systemDefault()
     val dia = Instant.ofEpochSecond(v.ts).atZone(zona).format(DateTimeFormatter.ofPattern(stringResource(R.string.format_dia_curt), Idioma.locale))
     val suggerits = x.candidats.take(3)
+    // Si l'app l'hauria donada a un aparell i el seu endoll diu que no (maqueta 19), es diu
+    val noEra = x.noEraEndoll?.let { " · " + stringResource(R.string.sense_nom_no_era_endoll, it.nom) }.orEmpty()
     TargetaPerFer(
         stringResource(R.string.perfer_posa_nom), stringResource(R.string.sense_nom_quan, dia, hora(v.ts)),
-        stringResource(R.string.sense_nom_detall, durada(v.minuts), num(v.w / 1000, 1)), v.kwh, x.euros,
+        stringResource(R.string.sense_nom_detall, durada(v.minuts), num(v.w / 1000, 1)) + noEra, v.kwh, x.euros,
         forma = { FormaVegada(x.punts, v.ts, v.fi + 60) },
     ) {
         XipsResposta(suggerits, { vm.responVegada(v, it.id) }, { triant = true }) { vm.ignoraVegada(v) }
@@ -290,6 +299,63 @@ private fun TargetaSenseNom(vm: WakkerViewModel, x: VegadaSenseNom) {
             stringResource(R.string.sense_nom_full, dia, hora(v.ts), num(v.w / 1000, 1)), suggerits, x.candidats, vm.config.teLinia,
             tria = { vm.responVegada(v, it.id) }, nou = { vm.responVegada(v, null, it) }, tanca = { triant = false },
             senseLinia = vm.config.teLinia && x.candidats.none { it.linia } && vm.aparellsLinia.isNotEmpty(), nomLinia = vm.config.nomLinia,
+        )
+    }
+}
+
+/**
+ * Un endoll que ja es pot moure (maqueta 19): l'app encerta sola el seu aparell des de fa una setmana. On el poses ara? Els
+ * aparells que proposa (els que no té apresos i els que més vegades fan), «Tots els aparells…» o «Deixa'l on és».
+ */
+@Composable
+private fun TargetaMoure(vm: WakkerViewModel, p: PropostaMoure) {
+    var triant by rememberSaveable { mutableStateOf(false) }
+    // Moure l'endoll es confirma: és un canvi que no té «Desfés»
+    var perMoure by remember { mutableStateOf<Aparell?>(null) }
+    val cops = vm.resumMes?.ranquing?.aparells.orEmpty().associate { it.aparell?.id to it.cops }
+    TargetaPerFer(
+        stringResource(R.string.perfer_endoll_seccio, p.endoll.nom), stringResource(R.string.perfer_endoll_apres, p.aparell.nom),
+        stringResource(R.string.perfer_endoll_apres_text, p.apres.seves),
+        peu = {
+            Text(stringResource(R.string.perfer_endoll_on), Modifier.padding(top = 8.dp), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            p.suggerits.forEach { a ->
+                val n = cops[a.id] ?: 0
+                val detall = when {
+                    vm.referencies[a.id] == null -> stringResource(R.string.perfer_endoll_sense_apres)
+                    n == 0 -> stringResource(R.string.perfer_endoll_cap_vegada)
+                    else -> pluralStringResource(R.plurals.perfer_endoll_vegades, n, n)
+                }
+                Row(
+                    Modifier.fillMaxWidth().clickable { perMoure = a }.padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Cercle(icona(a.categoria), EstatIcona.NEUTRE, 28.dp)
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(a.nom, fontSize = 13.5.sp, fontWeight = FontWeight.Medium)
+                        Text(detall, fontSize = 11.sp, color = Suau)
+                    }
+                    Icon(Icons.Outlined.ChevronRight, null, Modifier.size(18.dp), tint = Suau)
+                }
+            }
+        },
+    ) {
+        Xip(stringResource(R.string.tria_tots), color = PrimariFluix) { triant = true }
+        Xip(stringResource(R.string.perfer_endoll_deixa)) { vm.ignoraMoure(p) }
+    }
+    if (triant) {
+        TriaAparell(
+            stringResource(R.string.perfer_endoll_on), p.suggerits, vm.aparells.filter { it.id != p.aparell.id }, vm.config.teLinia,
+            tria = { perMoure = it; triant = false }, nou = { vm.posaEndollANou(p.endoll.id, it); triant = false },
+            tanca = { triant = false }, nomLinia = vm.config.nomLinia,
+        )
+    }
+    perMoure?.let { a ->
+        AlertDialog(
+            onDismissRequest = { perMoure = null },
+            text = { Text(stringResource(R.string.perfer_endoll_confirma, p.endoll.nom, a.nom)) },
+            confirmButton = { TextButton(onClick = { vm.posaEndollA(p.endoll.id, a.id); perMoure = null }) { Text(stringResource(R.string.perfer_endoll_mou)) } },
+            dismissButton = { TextButton(onClick = { perMoure = null }) { Text(stringResource(R.string.escaneig_cancella)) } },
         )
     }
 }

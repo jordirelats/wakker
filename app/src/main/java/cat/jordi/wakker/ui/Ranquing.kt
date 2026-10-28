@@ -99,6 +99,8 @@ private fun FilaDelRanquing(posicio: Int, f: FilaRanquing, part: Double, nomLini
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(f.nom.ifBlank { nomLinia }, Modifier.weight(1f, fill = false), fontSize = 13.5.sp, fontWeight = FontWeight.Medium, maxLines = 2, lineHeight = 17.sp, overflow = TextOverflow.Ellipsis)
                 if (f.linia) Etiqueta(nomLinia.ifBlank { stringResource(R.string.pinca2_xip) })
+                // El consum és el que ha mesurat el seu endoll (maqueta 19)
+                if (f.endoll) Etiqueta(stringResource(R.string.endoll_xip))
             }
             if (f.compressorW != null) Text(stringResource(R.string.ranquing_compressor_curt), fontSize = 11.sp, color = Suau)
             Spacer(Modifier.height(4.dp))

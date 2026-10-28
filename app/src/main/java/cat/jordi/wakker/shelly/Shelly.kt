@@ -64,7 +64,8 @@ private fun llegeix(c: HttpURLConnection): String {
 /** El Shelly a la xarxa de casa (API RPC de Gen2/Gen3, per HTTP). */
 class ShellyLocal(private val host: String) {
 
-    private fun rpc(metode: String, tempsMs: Int = 3000): JSONObject {
+    /** Una crida RPC (també la fan servir els endolls Shelly, maqueta 19). */
+    internal fun rpc(metode: String, tempsMs: Int = 3000): JSONObject {
         val c = URL("http://$host/rpc/$metode").openConnection() as HttpURLConnection
         c.connectTimeout = tempsMs
         c.readTimeout = tempsMs
@@ -161,7 +162,10 @@ class ShellyNuvol(private val servidor: String, private val clau: String, privat
         return horesDelNuvol(entrades, zona, dia)
     }
 
-    fun lectura(): Lectura? {
+    fun lectura(): Lectura? = estat()?.let { Lectura.de(it, Origen.NUVOL) }
+
+    /** L'estat sencer de l'aparell al núvol (el de Shelly.GetStatus); null si el núvol no el coneix. També per als endolls Shelly (maqueta 19). */
+    fun estat(): JSONObject? {
         val c = URL("$base/v2/devices/api/get?auth_key=${URLEncoder.encode(clau, "UTF-8")}")
             .openConnection() as HttpURLConnection
         c.connectTimeout = 5000
@@ -172,8 +176,7 @@ class ShellyNuvol(private val servidor: String, private val clau: String, privat
         c.outputStream.use { it.write("""{"ids":["$idDispositiu"],"select":["status"]}""".toByteArray()) }
         val llista = JSONArray(llegeix(c))
         if (llista.length() == 0) return null
-        val estat = llista.getJSONObject(0).optJSONObject("status") ?: return null
-        return Lectura.de(estat, Origen.NUVOL)
+        return llista.getJSONObject(0).optJSONObject("status")
     }
 }
 

@@ -80,6 +80,7 @@ fun PantallaFitxa(vm: WakkerViewModel) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(a.nom, fontSize = 18.sp, fontWeight = FontWeight.SemiBold)
                         if (vm.config.teLinia && a.linia) Etiqueta(vm.config.nomLinia)
+                        if (vm.endollDe.containsKey(a.id)) Etiqueta(stringResource(R.string.endoll_xip))
                     }
                     Text(
                         listOf(stringResource(a.categoria.nomId), "${a.marca} ${a.model}".trim()).filter { it.isNotBlank() }.joinToString(" · "),
@@ -87,17 +88,23 @@ fun PantallaFitxa(vm: WakkerViewModel) {
                     )
                 }
             }
-            // Aquest mes: les vegades (o la nevera, el compressor)
-            val kwh = nevera?.kwh ?: f?.kwhMes ?: 0.0
+            // Aquest mes: el que ha mesurat l'endoll si en té (maqueta 19); si no, les vegades (o la nevera, el compressor)
+            val mesura = f?.endoll?.mesura
+            val kwh = if (mesura != null) f.endoll.kwhMes else nevera?.kwh ?: f?.kwhMes ?: 0.0
             Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.Bottom) {
                 Text(num(kwh, 2), style = EstilMitja)
                 Text(
-                    " kWh   " + if (nevera != null) stringResource(R.string.fitxa_aquest_mes)
-                    else pluralStringResource(R.plurals.fitxa_cops_mes, f?.copsMes ?: 0, f?.copsMes ?: 0),
+                    " kWh   " + when {
+                        mesura != null -> stringResource(R.string.fitxa_mesurat_endoll)
+                        nevera != null -> stringResource(R.string.fitxa_aquest_mes)
+                        else -> pluralStringResource(R.plurals.fitxa_cops_mes, f?.copsMes ?: 0, f?.copsMes ?: 0)
+                    },
                     Modifier.padding(bottom = 6.dp), fontSize = 14.sp, color = Suau,
                 )
             }
-            Text(stringResource(R.string.aparells_kwh_euros_any, num(a.kwhAny), num(a.kwhAny * preu)), fontSize = 13.sp, color = Suau)
+            // L'any: el que diu l'endoll (la mitjana per dia) o el de l'etiqueta o el valor típic
+            val kwhAny = mesura?.let { it.whDia * 365 / 1000 } ?: a.kwhAny
+            Text(stringResource(R.string.aparells_kwh_euros_any, num(kwhAny), num(kwhAny * preu)), fontSize = 13.sp, color = Suau)
             when {
                 nevera != null -> Text(stringResource(R.string.fitxa_compressor, num(nevera.compressorW ?: 0.0), num(vm.config.neveraCicle * 100)), Modifier.padding(top = 4.dp), fontSize = 13.sp, color = Primari)
                 r != null -> {
@@ -110,8 +117,11 @@ fun PantallaFitxa(vm: WakkerViewModel) {
             }
             a.esperaW?.let { Text(stringResource(R.string.aparells_en_espera, num(it, 1)), fontSize = 13.sp, color = Suau) }
             if (a.classe.isNotBlank()) Text(stringResource(R.string.aparells_classe, a.classe), fontSize = 13.sp, color = Suau)
-            if (a.font == Font.TIPIC) Text(stringResource(R.string.aparells_es_tipic), fontSize = 13.sp, color = DesconegutText)
+            if (a.font == Font.TIPIC && mesura == null) Text(stringResource(R.string.aparells_es_tipic), fontSize = 13.sp, color = DesconegutText)
         }
+
+        // L'endoll amb mesura que té posat (maqueta 19): què n'ha après l'app i el que ha mesurat
+        f?.endoll?.let { TargetaEndollFitxa(vm, a, it) }
 
         // On està connectat: una sola opció, només si hi ha la pinça 2
         if (vm.config.teLinia && a.funciona != Funcionament.SEMPRE && !a.nom.equals(vm.config.nomLinia, ignoreCase = true)) Targeta {
@@ -205,7 +215,7 @@ private fun FilaVegada(v: Vegada, noEra: () -> Unit) {
             Text("${num(v.kwh, 2)} kWh", fontSize = 14.sp, fontWeight = FontWeight.Medium)
             // «No era ell» a totes (maqueta 17): també a les que l'usuari havia dit per error
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(stringResource(if (v.com == Com.ENSENYAT) R.string.fitxa_ensenyat else R.string.fitxa_reconegut), fontSize = 11.sp, color = Suau)
+                Text(stringResource((v.com ?: Com.RECONEGUT).textId), fontSize = 11.sp, color = if (v.com == Com.ENDOLL) Primari else Suau)
                 Text(stringResource(R.string.fitxa_no_era), Modifier.minimumInteractiveComponentSize().clickable(onClick = noEra).padding(horizontal = 4.dp, vertical = 4.dp), fontSize = 11.5.sp, color = Suau, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
             }
         }

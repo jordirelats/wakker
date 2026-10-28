@@ -37,6 +37,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Surface
+import androidx.compose.material.icons.outlined.Outlet
 import cat.jordi.wakker.R
 import cat.jordi.wakker.dades.Aparell
 import cat.jordi.wakker.dades.FilaRanquing
@@ -79,6 +82,17 @@ fun PantallaAparells(vm: WakkerViewModel) {
                 }
             }
         } else {
+            // Els aparells amb endoll (maqueta 19): el que gasten és mesurat
+            val ambEndoll = vm.endollDe.size
+            if (ambEndoll > 0) {
+                Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), color = PrimariFluix) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Outlined.Outlet, null, Modifier.size(16.dp), tint = Primari)
+                        Spacer(Modifier.width(8.dp))
+                        Text(pluralStringResource(R.plurals.aparells_amb_endoll, ambEndoll, ambEndoll), fontSize = 12.sp, lineHeight = 16.sp)
+                    }
+                }
+            }
             val mesurats = r?.aparells.orEmpty()
             // Els que l'app ja coneix però aquest mes encara no han funcionat (el dia 1, el cotxe après), a la llista, a 0
             // kWh: abans passaven a «sense mesurar» (1.1.3)
@@ -99,7 +113,8 @@ fun PantallaAparells(vm: WakkerViewModel) {
             if (sempre.isNotEmpty()) {
                 Plegat(Icons.Outlined.Power, pluralStringResource(R.plurals.aparells_n_sempre, sempre.size, sempre.size, num(sempre.sumOf { it.wTipic }))) {
                     sempre.forEach { a ->
-                        FilaPetita(icona(a.categoria), EstatIcona.GRIS, a.nom, nomLinia.takeIf { vm.config.teLinia && a.linia }, "${num(a.wTipic)} W") { vm.obreAparell(a) }
+                        val etiqueta = if (vm.endollDe.containsKey(a.id)) stringResource(R.string.endoll_xip) else nomLinia.takeIf { vm.config.teLinia && a.linia }
+                        FilaPetita(icona(a.categoria), EstatIcona.GRIS, a.nom, etiqueta, "${num(a.wTipic)} W") { vm.obreAparell(a) }
                     }
                 }
             }
@@ -149,11 +164,15 @@ private fun FilaAparell(vm: WakkerViewModel, f: FilaRanquing, part: Double, nomL
         Cercle(f.aparell?.let { icona(it.categoria) } ?: Icons.Outlined.Bolt, EstatIcona.SAP, 34.dp)
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
+            val teEndoll = f.aparell != null && vm.endollDe.containsKey(f.aparell.id)
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Text(f.nom.ifBlank { nomLinia }, Modifier.weight(1f, fill = false), fontSize = 13.5.sp, fontWeight = FontWeight.Medium, maxLines = 2, lineHeight = 17.sp, overflow = TextOverflow.Ellipsis)
                 if (f.linia) Etiqueta(nomLinia.ifBlank { stringResource(R.string.pinca2_xip) })
+                if (teEndoll) Etiqueta(stringResource(R.string.endoll_xip))
             }
             if (encaraNo) Text(stringResource(R.string.aparells_mes_encara_no), fontSize = 10.5.sp, color = Suau)
+            // Amb l'endoll, l'app l'aprèn sola: ho diu en verd, no en ambre (maqueta 19)
+            else if (teEndoll && aprenent(vm, f)) Text(stringResource(R.string.aparells_apren_endoll), fontSize = 10.5.sp, color = Primari, fontWeight = FontWeight.SemiBold)
             else if (aprenent(vm, f)) ParaulaAmbre(stringResource(R.string.aparells_nou))
             Spacer(Modifier.height(4.dp))
             BarraPart(part)

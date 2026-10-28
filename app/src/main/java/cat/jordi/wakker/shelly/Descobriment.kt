@@ -99,7 +99,7 @@ private fun mdns(context: Context, enTrobar: (Trobat) -> Unit): () -> Unit {
  * Pregunta a les adreces de la wifi del mòbil si són un Shelly: /shelly, i després, si té mesura d'energia (em1:0
  * a Shelly.GetStatus). Amb 48 preguntes alhora, una /24 (254 adreces) es mira en pocs segons.
  */
-private suspend fun escaneja(context: Context, enTrobar: (Trobat) -> Unit, nomesSiHiEs: String? = null) {
+private suspend fun escaneja(context: Context, enTrobar: (Trobat) -> Unit, nomesSiHiEs: String? = null, prova: (String) -> Trobat? = ::shellyA) {
     val cm = context.getSystemService(ConnectivityManager::class.java)
     val xarxa = cm.activeNetwork ?: return
     if (cm.getNetworkCapabilities(xarxa)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true) return
@@ -109,9 +109,33 @@ private suspend fun escaneja(context: Context, enTrobar: (Trobat) -> Unit, nomes
     val alhora = Semaphore(48)
     coroutineScope {
         for (ip in adreces) {
-            launch { alhora.withPermit { shellyA(ip)?.let(enTrobar) } }
+            launch { alhora.withPermit { prova(ip)?.let(enTrobar) } }
         }
     }
+}
+
+/**
+ * Els Shelly amb mesura d'un sol canal que fan d'endoll (maqueta 19): per mDNS i preguntant a tota la wifi, com
+ * [descobreix], però mirant que tinguin un `switch:0` que mesuri i no siguin l'EM. Recull durant [tempsMs] i torna el que
+ * ha trobat.
+ */
+suspend fun buscaEndollsShelly(context: Context, actual: String, tempsMs: Long = 10_000): List<cat.jordi.wakker.endolls.EndollTrobat> {
+    val trobats = java.util.concurrent.ConcurrentHashMap<String, cat.jordi.wakker.endolls.EndollTrobat>()
+    val vist = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    val prova: (String) -> Unit = { host ->
+        if (vist.add(host)) cat.jordi.wakker.endolls.ShellyEndoll.a(host)?.let { trobats.putIfAbsent(it.mac.ifBlank { it.host }, it) }
+    }
+    val feina = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    val aturaMdns = mdns(context) { t -> feina.launch { prova(t.host) } }
+    // Tota la wifi només si és la de casa (on hi ha el Shelly configurat): no es pregunta a mil adreces d'una xarxa aliena
+    val escaneig = feina.launch { escaneja(context, {}, nomesSiHiEs = actual.substringBefore(':').takeIf { it.isNotBlank() }, prova = { ip -> prova(ip); null }) }
+    try {
+        kotlinx.coroutines.withTimeoutOrNull(tempsMs) { escaneig.join() }
+    } finally {
+        aturaMdns()
+        feina.cancel()
+    }
+    return trobats.values.toList()
 }
 
 /** Com a molt, una /22: 1.022 adreces, que amb 48 preguntes alhora es miren en uns 15 segons. */

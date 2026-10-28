@@ -145,6 +145,7 @@ private fun LlistaSeccions(vm: WakkerViewModel) {
     val connexio = listOfNotNull(
         if (config.host.isNotBlank()) stringResource(R.string.config_shelly_a, config.host) else stringResource(R.string.config_nomes_nuvol),
         stringResource(R.string.config_nuvol_ok).takeIf { config.teNuvol },
+        if (vm.endolls.isNotEmpty()) pluralStringResource(R.plurals.config_n_endolls, vm.endolls.size, vm.endolls.size) else null,
     ).joinToString(" · ")
     val preu = listOfNotNull(resumTarifa(tarifa), tarifa.limitKw?.let { "${num(it, 2)} kW" }).joinToString(" · ")
     val avisos = listOfNotNull(
@@ -387,6 +388,8 @@ private fun SeccioConnexio(vm: WakkerViewModel) {
                 }
                 nuvol?.let { Text(it, Modifier.padding(top = 6.dp), color = if (nuvolOk) Ok else DesconegutText, fontSize = 13.sp) }
             }
+            // Els endolls amb mesura (maqueta 19): es desen sols, sense el «Desa» de sota
+            if (config.configurat) TargetaEndolls(vm)
             if (!config.configurat) {
                 Targeta {
                     TitolTargeta(stringResource(R.string.connecta_titol_preu))
@@ -831,7 +834,7 @@ private fun TargetaExporta(vm: WakkerViewModel) {
         TipusExport.VEGADES to stringResource(R.string.exporta_cap_vegades),
         TipusExport.MINUTS to stringResource(R.string.exporta_cap_minuts, nomLinia),
     ).mapValues { it.value.split(";") }
-    val textCom = mapOf(Com.ENSENYAT to stringResource(R.string.fitxa_ensenyat), Com.RECONEGUT to stringResource(R.string.fitxa_reconegut))
+    val textCom = Com.entries.associateWith { stringResource(it.textId) }
     val desa = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/csv")) { uri ->
         val t = tipus
         if (uri != null && t != null) vm.exporta(t, periode, uri, capcaleres.getValue(t), textCom)

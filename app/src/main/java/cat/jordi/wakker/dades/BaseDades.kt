@@ -33,7 +33,7 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO)
     companion object {
         /** El fitxer de la base de dades (la còpia de seguretat el substitueix en tornar a obrir l'app). */
         const val NOM = "wakker.db"
-        const val VERSIO = 9
+        const val VERSIO = 10
     }
 
 
@@ -61,6 +61,28 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO)
         creaRepetits(db)
         creaVegades(db)
         creaHores(db)
+        creaEndolls(db)
+    }
+
+    /**
+     * Els endolls amb mesura (versió 10, maqueta 19): cada endoll, a quin aparell ha estat posat i quan (un període obert té
+     * `fins_a` null), els seus minuts (Wh; [aprox]: repartits de la potència de 5 minuts de l'endoll) i les seves hores (Wh,
+     * de l'historial de l'endoll). [ts] de les hores: l'inici de l'hora local.
+     */
+    private fun creaEndolls(db: SQLiteDatabase) {
+        db.execSQL(
+            """CREATE TABLE endolls (id INTEGER PRIMARY KEY AUTOINCREMENT, host TEXT NOT NULL, mac TEXT NOT NULL, model TEXT NOT NULL, nom TEXT NOT NULL,
+               tipus TEXT NOT NULL DEFAULT 'tapo')"""
+        )
+        db.execSQL(
+            """CREATE TABLE endoll_periodes (id INTEGER PRIMARY KEY AUTOINCREMENT, endoll INTEGER NOT NULL, aparell INTEGER NOT NULL,
+               des_de INTEGER NOT NULL, fins_a INTEGER)"""
+        )
+        db.execSQL(
+            """CREATE TABLE endoll_minuts (endoll INTEGER NOT NULL, ts INTEGER NOT NULL, wh REAL NOT NULL, aprox INTEGER NOT NULL DEFAULT 0,
+               PRIMARY KEY (endoll, ts)) WITHOUT ROWID"""
+        )
+        db.execSQL("CREATE TABLE endoll_hores (endoll INTEGER NOT NULL, ts INTEGER NOT NULL, wh REAL NOT NULL, PRIMARY KEY (endoll, ts)) WITHOUT ROWID")
     }
 
     /**
@@ -146,6 +168,8 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO)
             creaRepetits(db)
         }
         if (oldVersion < 9) creaHores(db)
+        // Versió 10 (maqueta 19): els endolls amb mesura
+        if (oldVersion < 10) creaEndolls(db)
         if (oldVersion < 8) {
             creaVegades(db)
             // El que ja s'havia ensenyat o respost abans de la 0.26 passa a ser etiquetes: el seu consum és d'aquell aparell.
@@ -553,6 +577,14 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO)
         writableDatabase.delete("mostres", "aparell = ? AND font = ?", arrayOf(aparellId.toString(), font))
     }
 
+    /** D'una font, només les [n] mostres més noves d'un aparell (les de l'endoll, que si no creixerien sense parar). */
+    fun retallaMostres(aparellId: Long, font: String, n: Int) {
+        writableDatabase.execSQL(
+            "DELETE FROM mostres WHERE aparell = ? AND font = ? AND id NOT IN (SELECT id FROM mostres WHERE aparell = ? AND font = ? ORDER BY ts DESC LIMIT $n)",
+            arrayOf(aparellId.toString(), font, aparellId.toString(), font),
+        )
+    }
+
     fun creaPregunta(ts: Long, dp: Double): Long =
         writableDatabase.insert("preguntes", null, ContentValues().apply {
             put("ts", ts); put("dp", dp); put("estat", EstatPregunta.PENDENT.name)
@@ -762,6 +794,173 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO)
     fun esborraEtiquetes(aparellId: Long) {
         writableDatabase.delete("etiquetes", "aparell = ?", arrayOf(aparellId.toString()))
     }
+
+    // ---------- Els endolls amb mesura (maqueta 19) ----------
+
+    fun endolls(): List<Endoll> =
+        readableDatabase.rawQuery("SELECT id, host, mac, model, nom, tipus FROM endolls ORDER BY id", null).use { c ->
+            buildList {
+                while (c.moveToNext()) add(
+                    Endoll(c.getLong(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4), TipusEndoll.de(c.getString(5)))
+                )
+            }
+        }
+
+    /** Desa un endoll (nou si l'id és 0); torna l'id. */
+    fun desaEndoll(e: Endoll): Long {
+        val valors = ContentValues().apply { put("host", e.host); put("mac", e.mac); put("model", e.model); put("nom", e.nom); put("tipus", e.tipus.clau) }
+        if (e.id != 0L) {
+            writableDatabase.update("endolls", valors, "id = ?", arrayOf(e.id.toString()))
+            return e.id
+        }
+        return writableDatabase.insert("endolls", null, valors)
+    }
+
+    /** Fora un endoll, amb els seus períodes, minuts i hores. Les mostres que n'havien sortit es queden. */
+    fun esborraEndoll(id: Long) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val arg = arrayOf(id.toString())
+            db.delete("endoll_hores", "endoll = ?", arg)
+            db.delete("endoll_minuts", "endoll = ?", arg)
+            db.delete("endoll_periodes", "endoll = ?", arg)
+            db.delete("endolls", "id = ?", arg)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** A quin aparell ha estat cada endoll i quan, del més antic al més nou. */
+    fun periodesEndoll(): List<PeriodeEndoll> =
+        readableDatabase.rawQuery("SELECT id, endoll, aparell, des_de, fins_a FROM endoll_periodes ORDER BY des_de", null).use { c ->
+            buildList { while (c.moveToNext()) add(PeriodeEndoll(c.getLong(0), c.getLong(1), c.getLong(2), c.getLong(3), if (c.isNull(4)) null else c.getLong(4))) }
+        }
+
+    /**
+     * Posa un endoll a un aparell (o a cap, amb null) des d'ara: tanca el període obert i n'obre un de nou. Un període
+     * de menys d'un minut (un canvi d'opinió) s'esborra en lloc de tancar-se.
+     */
+    fun posaEndollA(endollId: Long, aparellId: Long?, ara: Long) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("endoll_periodes", "endoll = ? AND fins_a IS NULL AND des_de > ?", arrayOf(endollId.toString(), (ara - 60).toString()))
+            db.update("endoll_periodes", ContentValues().apply { put("fins_a", ara) }, "endoll = ? AND fins_a IS NULL", arrayOf(endollId.toString()))
+            if (aparellId != null) {
+                db.insert("endoll_periodes", null, ContentValues().apply { put("endoll", endollId); put("aparell", aparellId); put("des_de", ara) })
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Fora tots els períodes d'un endoll (quan es torna a posar al mateix aparell: en queda un de sol, des del principi). */
+    fun esborraPeriodesEndoll(endollId: Long) {
+        writableDatabase.delete("endoll_periodes", "endoll = ?", arrayOf(endollId.toString()))
+    }
+
+    /** Un aparell esborrat: els seus períodes d'endoll es tanquen. */
+    fun treuEndollsDe(aparellId: Long, ara: Long) {
+        writableDatabase.update("endoll_periodes", ContentValues().apply { put("fins_a", ara) }, "aparell = ? AND fins_a IS NULL", arrayOf(aparellId.toString()))
+    }
+
+    /** Els minuts d'un endoll: els exactes (en directe) substitueixen els aproximats; els aproximats no trepitgen els exactes. */
+    fun insereixMinutsEndoll(endollId: Long, minuts: List<MinutEndoll>) {
+        if (minuts.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val exacte = db.compileStatement("INSERT OR REPLACE INTO endoll_minuts (endoll, ts, wh, aprox) VALUES (?, ?, ?, 0)")
+            val aprox = db.compileStatement("INSERT OR IGNORE INTO endoll_minuts (endoll, ts, wh, aprox) VALUES (?, ?, ?, 1)")
+            for (m in minuts) {
+                val sql = if (m.aprox) aprox else exacte
+                sql.bindLong(1, endollId); sql.bindLong(2, m.ts); sql.bindDouble(3, m.wh)
+                sql.executeInsert()
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Els minuts d'un endoll entre dos instants (l'últim inclòs), per ordre. */
+    fun minutsEndoll(endollId: Long, desDe: Long, finsA: Long): List<MinutEndoll> =
+        readableDatabase.rawQuery(
+            "SELECT ts, wh, aprox FROM endoll_minuts WHERE endoll = ? AND ts >= ? AND ts <= ? ORDER BY ts",
+            arrayOf(endollId.toString(), desDe.toString(), finsA.toString()),
+        ).use { c -> buildList { while (c.moveToNext()) add(MinutEndoll(c.getLong(0), c.getDouble(1), c.getInt(2) != 0)) } }
+
+    fun primerMinutEndoll(endollId: Long): Long? =
+        readableDatabase.rawQuery("SELECT MIN(ts) FROM endoll_minuts WHERE endoll = ?", arrayOf(endollId.toString())).use {
+            if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null
+        }
+
+    fun darrerMinutEndoll(endollId: Long, nomesExactes: Boolean = false): Long? =
+        readableDatabase.rawQuery(
+            "SELECT MAX(ts) FROM endoll_minuts WHERE endoll = ?" + if (nomesExactes) " AND aprox = 0" else "", arrayOf(endollId.toString()),
+        ).use { if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null }
+
+    /** Les hores d'un endoll (Wh), de l'historial de l'endoll: substitueixen les que hi hagués. */
+    fun insereixHoresEndoll(endollId: Long, hores: List<Pair<Long, Double>>) {
+        if (hores.isEmpty()) return
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            val sql = db.compileStatement("INSERT OR REPLACE INTO endoll_hores (endoll, ts, wh) VALUES (?, ?, ?)")
+            for ((ts, wh) in hores) {
+                sql.bindLong(1, endollId); sql.bindLong(2, ts); sql.bindDouble(3, wh)
+                sql.executeInsert()
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    /** Les hores d'un endoll entre dos instants (Wh), per ordre. */
+    fun horesEndoll(endollId: Long, desDe: Long, finsA: Long): List<Pair<Long, Double>> =
+        readableDatabase.rawQuery(
+            "SELECT ts, wh FROM endoll_hores WHERE endoll = ? AND ts >= ? AND ts < ? ORDER BY ts", arrayOf(endollId.toString(), desDe.toString(), finsA.toString()),
+        ).use { c -> buildList { while (c.moveToNext()) add(c.getLong(0) to c.getDouble(1)) } }
+
+    fun darreraHoraEndoll(endollId: Long): Long? =
+        readableDatabase.rawQuery("SELECT MAX(ts) FROM endoll_hores WHERE endoll = ?", arrayOf(endollId.toString())).use {
+            if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null
+        }
+
+    fun primeraHoraEndoll(endollId: Long): Long? =
+        readableDatabase.rawQuery("SELECT MIN(ts) FROM endoll_hores WHERE endoll = ?", arrayOf(endollId.toString())).use {
+            if (it.moveToFirst() && !it.isNull(0)) it.getLong(0) else null
+        }
+
+    /** Fora les hores d'un endoll d'una estona (per tornar-les a llegir alineades d'una altra manera). */
+    fun esborraHoresEndoll(endollId: Long) {
+        writableDatabase.delete("endoll_hores", "endoll = ?", arrayOf(endollId.toString()))
+    }
+
+    /** Els minuts dels endolls de fa més de [abans] s'esborren, com els del Shelly (per endoll, que és com va la clau). */
+    fun esborraMinutsEndoll(abans: Long) {
+        endolls().forEach { writableDatabase.delete("endoll_minuts", "endoll = ? AND ts < ?", arrayOf(it.id.toString(), abans.toString())) }
+    }
+
+    /** Les últimes [n] vegades d'un aparell que l'endoll ha confirmat des de [desDe], de la més nova a la més antiga. */
+    fun vegadesEndoll(aparellId: Long, desDe: Long, n: Int): List<Vegada> =
+        readableDatabase.rawQuery(
+            "SELECT id, canal, ts, fi, minuts, w, kwh, variacio, arrencada, aparell, com FROM vegades WHERE aparell = ? AND com = 'ENDOLL' AND ts >= ? ORDER BY ts DESC LIMIT $n",
+            arrayOf(aparellId.toString(), desDe.toString()),
+        ).use { c ->
+            buildList {
+                while (c.moveToNext()) add(
+                    Vegada(
+                        c.getLong(0), c.getInt(1), c.getLong(2), c.getLong(3), c.getInt(4), c.getDouble(5), c.getDouble(6),
+                        c.getDouble(7), c.getDouble(8), c.getLong(9), Com.ENDOLL,
+                    )
+                )
+            }
+        }
 
     /** Quants minuts exactes de tota la casa hi ha entre dos instants. */
     fun minutsExactes(desDe: Long, finsA: Long): Long =

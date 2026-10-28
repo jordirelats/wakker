@@ -11,13 +11,16 @@ import kotlin.math.min
  * 7,8 kWh sense tocar-la. Prototip: recerca/deteccio/repartiment_episodis.py.
  */
 
-/** Com se sap de qui és una vegada. */
-enum class Com {
+/** Com se sap de qui és una vegada, amb el text curt de les pantalles («ensenyat per tu», «reconegut», «segons l'endoll»). */
+enum class Com(@androidx.annotation.StringRes val textId: Int) {
     /** L'usuari ho ha dit: una estona passada, una pregunta, un moment punta, el que es repeteix, «L'he encès». */
-    ENSENYAT,
+    ENSENYAT(cat.jordi.wakker.R.string.fitxa_ensenyat),
 
     /** S'assembla a la firma d'un aparell, i només a la d'un. */
-    RECONEGUT,
+    RECONEGUT(cat.jordi.wakker.R.string.fitxa_reconegut),
+
+    /** L'endoll amb mesura d'aquell aparell era encès mentre durava (maqueta 19): no cal confirmar-ho. */
+    ENDOLL(cat.jordi.wakker.R.string.fitxa_endoll),
 }
 
 /**
@@ -84,14 +87,22 @@ class IndexEtiquetes(etiquetes: List<Etiqueta>) {
  * valor), la durada (si se sap, entre un terç i el triple) i que no en polsi un i l'altre no. Si n'encaixa més d'un, el que
  * s'hi assembla clarament més ([distancia], ×1,4). Si no n'encaixa cap, i una estona ensenyada la cobreix sencera (una cosa
  * curta dins del cicle d'un aparell), d'aquell aparell; si no, de ningú. Els aparells que l'usuari ha dit que no eren, no.
+ *
+ * Amb un endoll amb mesura (maqueta 19): si l'endoll d'un aparell era encès mentre durava la vegada ([endoll]), és seu,
+ * abans que res (tret que l'usuari hagi dit «No era ell»); i els aparells que tenien l'endoll apagat ([noEndoll]) no poden
+ * ser, encara que l'usuari els hagués dit o la firma s'hi assembli.
  */
 fun assigna(
     v: Vegada, candidats: List<Aparell>, refs: Map<Long, Referencia>, etiquetes: List<Etiqueta>, exclosos: Set<Long> = emptySet(),
+    endoll: Long? = null, noEndoll: Set<Long> = emptySet(),
 ): Pair<Long?, Com?> {
-    val seves = etiquetes.filter { it.canal == v.canal && it.aparellId !in exclosos }.map { it to encavalca(v, it) }.filter { it.second > 0 }
-    seves.filter { !it.first.no }.maxByOrNull { it.second }?.let { return it.first.aparellId to Com.ENSENYAT }
+    val seves = etiquetes.filter { it.canal == v.canal && it.aparellId !in exclosos && it.aparellId !in noEndoll }
+        .map { it to encavalca(v, it) }.filter { it.second > 0 }
     val no = seves.filter { it.first.no }.map { it.first.aparellId }.toSet()
+    if (endoll != null && endoll !in no && endoll !in exclosos && candidats.any { it.id == endoll }) return endoll to Com.ENDOLL
+    seves.filter { !it.first.no }.maxByOrNull { it.second }?.let { return it.first.aparellId to Com.ENSENYAT }
     val encaixen = candidats.filter { a ->
+        if (a.id in noEndoll) return@filter false
         val r = refs[a.id] ?: return@filter false
         if (a.id in no) return@filter false
         val potencia = if (r.wMin != null) v.w in r.min * 0.85..r.max * 1.15 else v.w in r.w / 1.3..r.w * 1.3
@@ -123,6 +134,8 @@ data class FilaRanquing(
     val compressorW: Double? = null,
     /** La línia de la pinça 2 sencera, sense cap aparell que s'hi hagi dit (o l'aparell que es diu com ella). */
     val esLinia: Boolean = false,
+    /** El consum és el que ha mesurat el seu endoll (maqueta 19), no el de les vegades. */
+    val endoll: Boolean = false,
 )
 
 /**

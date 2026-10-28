@@ -53,8 +53,10 @@ class Vigilancia : Service() {
     private suspend fun vigila() {
         val repo = (application as WakkerApp).repo
         var comprovat = 0L
+        var volta = 0
         while (feina.isActive) {
             val l = runCatching { repo.lectura() }.getOrNull()
+            volta++
             if (l != null) {
                 val limit = repo.config.tarifa.limitKw
                 if (limit != null && calAvisarPotencia(repo.config, l.total.w, WakkerApp.oberta)) {
@@ -69,8 +71,13 @@ class Vigilancia : Service() {
                 // El giny de la pantalla d'inici, com a molt un cop per minut
                 runCatching { Ginys.actualitza(this, repo, l) }
                 val ara = System.currentTimeMillis()
+                // Els endolls amb mesura (maqueta 19), després de l'avís perquè no l'endarrereixin: cada 30 s, només a casa i amb
+                // l'app tancada (oberta, ja els llegeix l'app); i el seu historial, quan toca
+                val aCasa = l.origen == cat.jordi.wakker.shelly.Origen.LOCAL
+                if (volta % 3 == 0 && aCasa && !WakkerApp.oberta) runCatching { repo.llegeixEndolls() }
                 if (ara - comprovat > 60_000 && !WakkerApp.oberta) {
                     comprovat = ara
+                    if (aCasa) runCatching { repo.sincronitzaEndolls() }
                     runCatching {
                         val resta = l.total.w - (if (repo.config.teLinia) (l.linia?.w ?: 0.0).coerceAtLeast(0.0) else 0.0)
                         repo.comprovaInesperat(resta)?.let { p -> Avisos.avisa(this, p, repo.aparellsAEntrenar(), repo.referencies()) }

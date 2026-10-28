@@ -166,11 +166,7 @@ private fun ElementDelPic(vm: WakkerViewModel, e: ElementPic, total: Double) {
             else listOfNotNull(
                 stringResource(R.string.pinca2_xip).takeIf { e.linia },
                 e.desDe?.let { stringResource(R.string.pics_des_de, horaMinut(it)) },
-                when (e.com) {
-                    Com.ENSENYAT -> stringResource(R.string.fitxa_ensenyat)
-                    Com.RECONEGUT -> stringResource(R.string.fitxa_reconegut)
-                    null -> null
-                },
+                e.com?.let { stringResource(it.textId) },
             ).joinToString(" · "),
             e.w, total,
         )

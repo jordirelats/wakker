@@ -148,6 +148,47 @@ class Config(context: Context) {
         set(v) = desa("sense_nom_ignorades", v.sorted().joinToString(","))
 
     /**
+     * El compte de Tapo dels endolls (maqueta 19): el correu, per ensenyar-lo, i el resum que l'endoll accepta
+     * (`sha256(sha1(correu) + sha1(contrasenya))`, en hexadecimal). La contrasenya no es desa mai.
+     */
+    var tapoCorreu: String
+        get() = text("tapo_correu")
+        set(v) = desa("tapo_correu", v)
+    var tapoResum: String
+        get() = text("tapo_resum")
+        set(v) = desa("tapo_resum", v)
+    val teTapo get() = tapoResum.isNotBlank()
+
+    /** L'última vegada que s'ha llegit l'historial dels endolls (s). */
+    var endollsMirat: Long
+        get() = p.getLong("endolls_mirat", 0)
+        set(v) = p.edit().putLong("endolls_mirat", v).apply()
+
+    /**
+     * Com entén l'endoll els timestamps de l'historial: 0, encara no se sap; 1, segons UTC de debò (el crate tapo); 2, l'hora
+     * local escrita com si fos UTC (les versions d'abans). L'app ho esbrina comparant les hores d'avui amb el consum d'avui.
+     */
+    var endollHoraLocal: Int
+        get() = p.getInt("endoll_hora_local", 0)
+        set(v) = p.edit().putInt("endoll_hora_local", v).apply()
+
+    /** L'últim comptador d'un endoll Shelly (instant i Wh): desat, perquè el treball de fons el pugui continuar en un procés nou. */
+    fun comptadorEndoll(id: Long): Pair<Long, Double>? =
+        text("endoll_comptador_$id").split(",").takeIf { it.size == 2 }?.let { (t, w) -> t.toLongOrNull()?.let { ts -> w.toDoubleOrNull()?.let { ts to it } } }
+
+    fun posaComptadorEndoll(id: Long, ts: Long, wh: Double) = desa("endoll_comptador_$id", "$ts,$wh")
+
+    /** Els endolls (per MAC) que no saben la potència de cada 5 minuts: no se'ls torna a demanar. */
+    var endollsSensePotencia: Set<String>
+        get() = text("endolls_sense_potencia").split(",").filter { it.isNotBlank() }.toSet()
+        set(v) = desa("endolls_sense_potencia", v.sorted().joinToString(","))
+
+    /** Les propostes de moure un endoll que l'usuari ha dit de deixar com són («endoll:aparell»). */
+    var moureIgnorats: Set<String>
+        get() = text("moure_ignorats").split(",").filter { it.isNotBlank() }.toSet()
+        set(v) = desa("moure_ignorats", v.sorted().joinToString(","))
+
+    /**
      * El resum de la setmana (maqueta 15): si s'avisa els dilluns, i el dilluns (epoch day) de l'última setmana que se n'ha
      * avisat i de l'última que l'usuari ha vist a la pantalla Ara.
      */

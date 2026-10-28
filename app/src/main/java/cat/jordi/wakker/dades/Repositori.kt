@@ -3,12 +3,21 @@ package cat.jordi.wakker.dades
 import android.content.Context
 import androidx.annotation.StringRes
 import cat.jordi.wakker.R
+import cat.jordi.wakker.endolls.InfoEndoll
+import cat.jordi.wakker.endolls.Klap
+import cat.jordi.wakker.endolls.LectorEndoll
+import cat.jordi.wakker.endolls.LecturaEndoll
+import cat.jordi.wakker.endolls.ShellyEndoll
+import cat.jordi.wakker.endolls.Tapo
 import cat.jordi.wakker.shelly.Lectura
 import cat.jordi.wakker.shelly.Origen
 import cat.jordi.wakker.shelly.ShellyLocal
 import cat.jordi.wakker.shelly.ShellyNuvol
 import cat.jordi.wakker.shelly.normalitzaMac
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -88,7 +97,21 @@ data class InfoPreu(
  * La fitxa d'un aparell (maqueta 13): el que ha gastat aquest mes, quantes vegades, les últimes, i (maqueta 17) el que
  * l'usuari li ha ensenyat, per poder-ho treure.
  */
-data class Fitxa(val aparellId: Long, val kwhMes: Double, val copsMes: Int, val ultimes: List<Vegada>, val ensenyats: List<Ensenyat> = emptyList())
+data class Fitxa(
+    val aparellId: Long, val kwhMes: Double, val copsMes: Int, val ultimes: List<Vegada>, val ensenyats: List<Ensenyat> = emptyList(),
+    /** L'endoll que té posat, si en té (maqueta 19). */
+    val endoll: EndollFitxa? = null,
+)
+
+/** L'endoll d'un aparell a la fitxa (maqueta 19): quin és, des de quan, què n'ha après l'app i el que ha mesurat. */
+data class EndollFitxa(
+    val endoll: Endoll, val periode: PeriodeEndoll, val apres: QueNHaApres?, val mesura: MesuraEndoll?, val lectura: LecturaEndoll?,
+    /** El que l'endoll ha mesurat aquest mes (kWh), de les seves hores. */
+    val kwhMes: Double,
+)
+
+/** Un endoll que ja es pot moure (maqueta 19): l'app encerta sola el seu aparell, i a quins aparells podria anar. */
+data class PropostaMoure(val endoll: Endoll, val aparell: Aparell, val apres: QueNHaApres, val suggerits: List<Aparell>)
 
 /** D'on ve una cosa ensenyada: una estona passada, en directe, una resposta (a «Què era?», a l'avís, a un pic) o el que es repeteix. */
 enum class OrigenEnsenyat { ESTONA, DIRECTE, VEGADA, PREGUNTA, PIC, REPETIT, RESPOSTA }
@@ -118,7 +141,11 @@ data class Obertes(val fresques: Boolean, val vegades: List<Vegada>, val nevera:
  * Una vegada grossa que encara no té nom (maqueta 15): els euros, els aparells que s'hi poden assemblar (del més semblant al
  * que menys) i la potència minut a minut de la resta de la casa, amb un quart d'hora a cada costat, per a la gràfica.
  */
-data class VegadaSenseNom(val vegada: Vegada, val euros: Double, val candidats: List<Aparell>, val punts: List<Pair<Long, Double>>)
+data class VegadaSenseNom(
+    val vegada: Vegada, val euros: Double, val candidats: List<Aparell>, val punts: List<Pair<Long, Double>>,
+    /** L'aparell que l'app li hauria donat, però el seu endoll era apagat (maqueta 19). */
+    val noEraEndoll: Aparell? = null,
+)
 
 /** El que més gasta i encara no té nom: les vegades més grosses dels últims 7 dies, i quant és tot el que no en té (kWh, part). */
 data class SenseNom(val vegades: List<VegadaSenseNom>, val kwh: Double, val part: Double)
@@ -248,6 +275,8 @@ class Repositori(val config: Config, private val bd: BaseDades) {
             actualitzaRepetits()
             // Les vegades noves, i de qui són totes (maqueta 13)
             actualitzaVegades()
+            // El que els endolls confirmen, com a mostres (maqueta 19)
+            aprenDelsEndolls()
             reassignaVegades()
             resumeixVells()
             n
@@ -450,7 +479,7 @@ class Repositori(val config: Config, private val bd: BaseDades) {
     ): Ranquing {
         val tots = bd.aparells()
         val perId = tots.associateBy { it.id }
-        class Acc(var kwh: Double = 0.0, var euros: Double = 0.0, var cops: Int = 0, var ensenyats: Int = 0)
+        class Acc(var kwh: Double = 0.0, var euros: Double = 0.0, var cops: Int = 0, var ensenyats: Int = 0, val vegades: MutableList<Triple<Long, Long, Double>> = mutableListOf())
         val acc = mutableMapOf<Long, Acc>()
         var senseId = 0.0
         var senseIdEuros = 0.0
@@ -472,6 +501,7 @@ class Repositori(val config: Config, private val bd: BaseDades) {
             val x = acc.getOrPut(a.id) { Acc() }
             x.kwh += kwh
             x.euros += eurosDe(v, desDe, finsA, p)
+            x.vegades += Triple(v.ts, v.fi + 60, kwh)
             if (v.ts >= desDe) x.cops++
             if (v.com == Com.ENSENYAT && v.ts >= desDe) x.ensenyats++
         }
@@ -479,9 +509,37 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         val liniaAprox = bd.liniaAproximada(desDe, finsA)
         val senseDetall = bd.senseDetall(desDe, finsA, fonsWh) + liniaAprox
         val preuResta = if (desconegut > 0.01) euros.desconegut / desconegut else p.de(desDe)
-        val files = acc.map { (id, x) ->
+        // Els aparells amb endoll (maqueta 19): el que gasten és el que l'endoll ha mesurat, no les seves vegades. El que
+        // l'endoll mesura de més (les bombes del rentaplats, l'espera de la tele) era als petits consums o al sempre encès
+        val ambEndoll = mutableSetOf<Long>()
+        var extraCasa = 0.0
+        var extraLinia = 0.0
+        for (pe in bd.periodesEndoll()) {
+            val a = perId[pe.aparellId] ?: continue
+            val d = max(desDe, pe.desDe)
+            val f = min(finsA, pe.finsA ?: finsA)
+            if (d >= f) continue
+            val hores = bd.horesEndoll(pe.endollId, d, f)
+            if (hores.isEmpty()) continue
+            val presents = hores.map { it.first }.toHashSet()
+            val mesurat = hores.sumOf { it.second } / 1000
+            val x = acc.getOrPut(a.id) { Acc() }
+            // La part de cada vegada que cau en hores que l'endoll ha mesurat de debò: aquella la substitueix l'endoll
+            val dins = x.vegades.sumOf { (ts, fi, kwh) -> kwh * partEnHores(ts, fi, presents) }
+            x.kwh += mesurat - dins
+            x.euros = x.kwh * preuResta
+            when {
+                // L'endoll diu menys que les vegades que té dins: la diferència no era seva, torna a «sense identificar»
+                mesurat < dins -> { senseId += dins - mesurat; senseIdEuros += (dins - mesurat) * preuResta }
+                aLaLinia(a) -> extraLinia += mesurat - dins
+                else -> extraCasa += mesurat - dins
+            }
+            ambEndoll += a.id
+        }
+        // Un aparell amb endoll que avui només ha gastat l'espera (17 Wh) no surt com a «0,0 kWh»
+        val files = acc.filter { (id, x) -> id !in ambEndoll || x.kwh >= 0.01 }.map { (id, x) ->
             val a = perId.getValue(id)
-            FilaRanquing(a, a.nom, x.kwh, x.euros, x.cops, x.ensenyats, aLaLinia(a))
+            FilaRanquing(a, a.nom, x.kwh, x.euros, x.cops, x.ensenyats, aLaLinia(a), endoll = id in ambEndoll)
         }.toMutableList()
         // La nevera: el compressor trobat sol, la part del temps que funciona
         var nevera = 0.0
@@ -498,22 +556,56 @@ class Repositori(val config: Config, private val bd: BaseDades) {
             val ella = tots.firstOrNull { esLinia(it) }
             files += FilaRanquing(ella, ella?.nom ?: config.nomLinia, linia, euros.linia, 0, 0, true, esLinia = true)
         }
-        val liniaAltres = if (ambAparells) max(linia - liniaAssignada - liniaAprox, 0.0) else 0.0
+        var liniaAltres = if (ambAparells) max(linia - liniaAssignada - liniaAprox, 0.0) else 0.0
         val preuLinia = if (linia > 0.01) euros.linia / linia else preuResta
-        val petits = max(desconegut - ep0 - nevera - (senseDetall - liniaAprox), 0.0)
-        val detall = if (ambAparells) senseDetall else senseDetall - liniaAprox
+        var petits = max(desconegut - ep0 - nevera - (senseDetall - liniaAprox), 0.0)
+        var detall = if (ambAparells) senseDetall else senseDetall - liniaAprox
+        var sempreNet = sempre
+        var sempreEuros = euros.sempre
+        // El que els endolls han mesurat de més era en altres calaixos: a la línia, a «altres de la línia»; a la casa, als petits
+        // consums, després al sempre encès i al que no té detall; si encara en sobra, es retalla dels aparells amb endoll (la
+        // suma segueix sent el total)
+        var sobra = extraCasa
+        run { val d = min(liniaAltres, extraLinia); liniaAltres -= d; sobra += extraLinia - d }
+        run { val d = min(petits, sobra); petits -= d; sobra -= d }
+        run { val d = min(sempreNet, sobra); if (sempreNet > 0.001) sempreEuros *= (sempreNet - d) / sempreNet; sempreNet -= d; sobra -= d }
+        run { val d = min(detall, sobra); detall -= d; sobra -= d }
+        if (sobra > 0.001) {
+            val totEndoll = files.filter { it.endoll }.sumOf { it.kwh }
+            if (totEndoll > 0.001) {
+                val f = (1 - sobra / totEndoll).coerceAtLeast(0.0)
+                files.replaceAll { if (it.endoll) it.copy(kwh = it.kwh * f, euros = it.euros * f) else it }
+            }
+        }
         return Ranquing(
-            files.sortedByDescending { it.kwh }, sempre + linia + desconegut, sempre, euros.sempre, petits, petits * preuResta,
+            files.sortedByDescending { it.kwh }, sempre + linia + desconegut, sempreNet, sempreEuros, petits, petits * preuResta,
             senseId, senseIdEuros, liniaAltres, liniaAltres * preuLinia, detall, detall * preuResta,
         )
     }
+
+    /** Quina part de l'estona [ts, fi) cau dins de les hores (l'inici de cada hora local) de [presents]. */
+    private fun partEnHores(ts: Long, fi: Long, presents: Set<Long>): Double {
+        if (fi <= ts) return 0.0
+        var dins = 0L
+        var h = iniciHora(ts, zona)
+        while (h < fi) {
+            if (h in presents) dins += min(fi, h + 3600) - max(ts, h)
+            h += 3600
+        }
+        return dins.toDouble() / (fi - ts)
+    }
+
+    /** Els aparells que tenen un endoll posat ara (maqueta 19). */
+    private fun aparellsAmbEndoll(): Set<Long> = bd.periodesEndoll().filter { it.finsA == null }.map { it.aparellId }.toSet()
 
     /** La nevera o el congelador que s'engega sol i no té mostres: el compressor trobat a les dades li fa de referència. */
     private fun neveraAutomatica(aparells: List<Aparell>): Aparell? {
         if (config.neveraW <= 0) return null
         val ambMostres = bd.aparellsAmbMostres()
+        // Una nevera amb endoll ja es mesura: el compressor trobat sol no li fa falta (sortiria dues vegades)
+        val ambEndoll = aparellsAmbEndoll()
         return listOf(Categoria.NEVERA, Categoria.CONGELADOR).firstNotNullOfOrNull { cat ->
-            aparells.firstOrNull { it.categoria == cat && it.funciona == Funcionament.SOL && it.id !in ambMostres && !aLaLinia(it) }
+            aparells.firstOrNull { it.categoria == cat && it.funciona == Funcionament.SOL && it.id !in ambMostres && it.id !in ambEndoll && !aLaLinia(it) }
         }
     }
 
@@ -564,6 +656,8 @@ class Repositori(val config: Config, private val bd: BaseDades) {
     fun esborraAparell(id: Long) {
         bd.esborraAparell(id)
         bd.esborraEtiquetes(id)
+        // El seu endoll, si en tenia, queda sense aparell (maqueta 19)
+        bd.treuEndollsDe(id, ara())
         haCanviat()
     }
 
@@ -583,8 +677,18 @@ class Repositori(val config: Config, private val bd: BaseDades) {
     @Volatile
     private var calRebuscar = false
 
-    private fun haCanviat() {
-        calReassignar = true
+    /** Des d'on cal tornar a repartir: els minuts nous d'un endoll només toquen les vegades d'aquells dies (maqueta 19). */
+    @Volatile
+    private var reassignarDesDe = 0L
+
+    /** El bloqueig petit dels dos camps del canvi: [haCanviat] no s'espera al repartiment, que pot trigar segons. */
+    private val bloqueigCanvi = Any()
+
+    private fun haCanviat(desDe: Long = 0) {
+        synchronized(bloqueigCanvi) {
+            reassignarDesDe = if (calReassignar) min(reassignarDesDe, desDe) else desDe
+            calReassignar = true
+        }
     }
 
     /**
@@ -667,14 +771,30 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         val iniciLinia = iniciLinia()
         val tots = casa + linia
         val refsTots = refsCasa + refsLinia
+        // Els endolls (maqueta 19): només els dels aparells que poden ser cada vegada (mai els sempre encesos), amb les
+        // seves dades carregades per finestres, i el que gastaven les altres vegades de les mateixes hores
+        val totsPeriodes = bd.periodesEndoll().filter { p -> aparells.any { it.id == p.aparellId && it.funciona != Funcionament.SEMPRE } }
+        val periodesCasa = totsPeriodes.filter { p -> casa.any { it.id == p.aparellId } }
+        val periodesLinia = totsPeriodes.filter { p -> linia.any { it.id == p.aparellId } }
+        val dades = HashMap<Long, DadesEndoll>()
+        val hores = perHora(vegades)
         return vegades.map { v ->
             val e = index.de(v)
             val (a, com) = when {
                 // Només les etiquetes dels aparells que hi ha ara a la línia: si s'han tret, la línia sencera ja surt com un més
                 // al rànquing, i comptar-la també a l'aparell la sumaria dues vegades (1.1.3)
-                v.canal == 1 -> assigna(v, linia, refsLinia, e.filter { et -> linia.any { it.id == et.aparellId } }, exclosos)
-                abansDeLaLinia(v, iniciLinia) -> assigna(v, tots, refsTots, e, exclosos)
-                else -> assigna(v, casa, refsCasa, e, exclosos)
+                v.canal == 1 -> {
+                    val (endoll, noEndoll) = veredictes(v, periodesLinia, dades, altresWh(v, hores))
+                    assigna(v, linia, refsLinia, e.filter { et -> linia.any { it.id == et.aparellId } }, exclosos, endoll, noEndoll)
+                }
+                abansDeLaLinia(v, iniciLinia) -> {
+                    val (endoll, noEndoll) = veredictes(v, totsPeriodes, dades, altresWh(v, hores))
+                    assigna(v, tots, refsTots, e, exclosos, endoll, noEndoll)
+                }
+                else -> {
+                    val (endoll, noEndoll) = veredictes(v, periodesCasa, dades, altresWh(v, hores))
+                    assigna(v, casa, refsCasa, e, exclosos, endoll, noEndoll)
+                }
             }
             v.copy(aparellId = a, com = com)
         }
@@ -694,9 +814,12 @@ class Repositori(val config: Config, private val bd: BaseDades) {
      */
     fun reassignaVegades() {
         synchronized(bloqueigVegades) {
-            if (!calReassignar) return
-            calReassignar = false
-            val totes = bd.vegades(0, Long.MAX_VALUE)
+            val desDe = synchronized(bloqueigCanvi) {
+                if (!calReassignar) return
+                calReassignar = false
+                reassignarDesDe.also { reassignarDesDe = 0 }
+            }
+            val totes = bd.vegades(desDe, Long.MAX_VALUE)
             val noves = assignaTotes(totes)
             bd.reassigna(totes.zip(noves).filter { (a, b) -> a.aparellId != b.aparellId || a.com != b.com }.map { (_, b) -> Triple(b.id, b.aparellId, b.com) })
         }
@@ -835,7 +958,7 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         val mes = bd.vegades(desDe, finsA, aparellId)
         return Fitxa(
             aparellId, mes.sumOf { it.kwh * part(it, desDe, finsA) }, mes.count { it.ts >= desDe }, bd.ultimesVegades(aparellId, 8),
-            ensenyats(aparellId),
+            ensenyats(aparellId), fitxaEndoll(aparellId),
         )
     }
 
@@ -925,12 +1048,19 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         val p = Preus(desDe, finsA)
         val refs = referencies() + referenciesLinia()
         val nos = bd.etiquetes().filter { it.no }
+        val periodes = bd.periodesEndoll()
+        val tots = bd.aparells()
+        val dadesEndolls = HashMap<Long, DadesEndoll>()
         val grosses = sense.filter { it.ts !in ignorades && it.kwh >= 0.3 }.sortedByDescending { it.kwh }.take(quants).map { v ->
-            // Els que l'usuari ha dit que no eren, no es proposen
-            val candidats = candidatsDe(v).filter { a -> nos.none { it.aparellId == a.id && encavalca(v, it) > 0 } }
+            // Els que l'usuari ha dit que no eren, i els que tenien l'endoll apagat (maqueta 19), no es proposen
+            val (_, noEndoll) = veredictes(v, periodes.filter { p -> candidatsDe(v).any { it.id == p.aparellId } }, dadesEndolls, 0.0)
+            val candidats = candidatsDe(v).filter { a -> a.id !in noEndoll && nos.none { it.aparellId == a.id && encavalca(v, it) > 0 } }
+            // Si sense l'endoll l'app l'hauria donada a un d'aquells aparells, es diu
+            val sola = if (noEndoll.isEmpty()) null else assigna(v, candidatsDe(v), refs, emptyList()).first?.takeIf { it in noEndoll }
             VegadaSenseNom(
                 v, eurosDe(v, v.ts, v.fi + 60, p), endevina(v.w, candidats, refs, candidats.size, v.minuts.toDouble(), v.forma),
                 bd.minutsW(linia = false, v.ts - 15 * 60, v.fi + 16 * 60).map { it.ts to it.w },
+                tots.firstOrNull { it.id == sola },
             )
         }
         return SenseNom(grosses, kwh, if (total > 0.05) kwh / total else 0.0)
@@ -1011,6 +1141,8 @@ class Repositori(val config: Config, private val bd: BaseDades) {
             bd.resumFins = nouFins
         }
         bd.esborraMinuts(minOf(config.resumFins, iniciDia(avui.minusDays(DIES_AMB_MINUTS))))
+        // Els minuts dels endolls, igual (maqueta 19); les seves hores es queden
+        bd.esborraMinutsEndoll(iniciDia(avui.minusDays(DIES_AMB_MINUTS)))
     }
 
     private fun resumeixDia(dia: LocalDate, fonsAra: Double) {
@@ -1216,15 +1348,17 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         return Desfer(etiquetes, mostres, repetit = id, aparellAbans = abans.takeIf { it != a })
     }
 
-    fun referencies(): Map<Long, Referencia> {
+    /** Les firmes dels aparells de la resta de la casa. Amb [senseFont], sense les mostres d'aquella font (les de l'endoll, maqueta 19). */
+    fun referencies(senseFont: String? = null): Map<Long, Referencia> {
         val aparells = aparellsAEntrenar()
         val sols = aparells.filter { it.funciona == Funcionament.SOL }.map { it.id }.toSet()
-        val refs = bd.mostres().filter { m -> aparells.any { it.id == m.aparellId } }.groupBy { it.aparellId }
+        val refs = bd.mostres().filter { m -> m.font != senseFont && aparells.any { it.id == m.aparellId } }.groupBy { it.aparellId }
             .mapNotNull { (id, m) -> Referencia.de(id, m, ambInterval = id in sols) }.associateBy { it.aparellId }
         // El compressor de la nevera, trobat sol a les dades: per a la nevera que s'engega sola i no té mostres
         val w = config.neveraW.takeIf { it > 0 } ?: return refs
+        val ambEndoll = aparellsAmbEndoll()
         val nevera = listOf(Categoria.NEVERA, Categoria.CONGELADOR).firstNotNullOfOrNull { cat ->
-            aparells.firstOrNull { it.categoria == cat && it.funciona == Funcionament.SOL && it.id !in refs }
+            aparells.firstOrNull { it.categoria == cat && it.funciona == Funcionament.SOL && it.id !in refs && it.id !in ambEndoll }
         } ?: return refs
         return refs + (nevera.id to Referencia(nevera.id, w, 0, null, automatica = true))
     }
@@ -1589,5 +1723,485 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         }
         haCanviat()
         return Desfer(etiquetes, mostres)
+    }
+
+    // ---------- Els endolls amb mesura (maqueta 19) ----------
+
+    /** Els lectors de cada endoll (un Tapo guarda la sessió KLAP; tots dos comproven la MAC), per id. */
+    private val lectors = java.util.concurrent.ConcurrentHashMap<Long, LectorEndoll>()
+
+    /** Els endolls que no responen: fins quan no es tornen a provar, i quants cops seguits han fallat (retrocés). */
+    private val fallades = java.util.concurrent.ConcurrentHashMap<Long, Pair<Long, Int>>()
+
+    /** Les lectures en directe de cada endoll que encara no han fet el minut: el minut, la suma de W i quantes. */
+    private val acumulatsEndoll = HashMap<Long, Triple<Long, Double, Int>>()
+
+    /** L'última lectura de cada endoll (es conserva encara que una vegada no respongui), per a les pantalles. */
+    @Volatile
+    var lecturesEndolls: Map<Long, LecturaEndoll> = emptyMap()
+        private set
+
+    private val sincronitzantEndolls = Mutex()
+
+    fun endolls() = bd.endolls()
+    fun periodesEndoll() = bd.periodesEndoll()
+
+    /** L'endoll que té posat un aparell ara, i des de quan. */
+    fun endollDe(aparellId: Long): Pair<Endoll, PeriodeEndoll>? {
+        val p = bd.periodesEndoll().lastOrNull { it.aparellId == aparellId && it.finsA == null } ?: return null
+        val e = bd.endolls().firstOrNull { it.id == p.endollId } ?: return null
+        return e to p
+    }
+
+    /** L'aparell que mesura un endoll ara. */
+    fun aparellDe(endollId: Long): Long? = bd.periodesEndoll().lastOrNull { it.endollId == endollId && it.finsA == null }?.aparellId
+
+    private fun lector(e: Endoll): LectorEndoll = lectors.getOrPut(e.id) {
+        when (e.tipus) {
+            TipusEndoll.SHELLY -> ShellyEndoll(e.host, macEsperada = e.mac)
+            TipusEndoll.TAPO -> Tapo(e.host, Klap.deHex(config.tapoResum), macEsperada = e.mac)
+        }
+    }
+
+    /** Si un endoll es pot llegir ara: un Tapo necessita el compte. */
+    fun llegible(e: Endoll) = e.tipus != TipusEndoll.TAPO || config.teTapo
+
+    /** El compte de Tapo ha canviat: les sessions d'abans ja no valen. */
+    fun oblidaSessionsEndolls() {
+        lectors.clear()
+        fallades.clear()
+    }
+
+    /** Un endoll nou (o el mateix, si ja hi era per la MAC, amb l'adreça nova); torna l'id. */
+    @Synchronized
+    fun afegeixEndoll(info: InfoEndoll): Long {
+        val existent = bd.endolls().firstOrNull { it.mac.isNotBlank() && it.mac == info.mac }
+        val id = bd.desaEndoll(Endoll(existent?.id ?: 0, info.host, info.mac, info.model, info.nom.ifBlank { info.model }, info.tipus))
+        lectors.remove(id)
+        fallades.remove(id)
+        return id
+    }
+
+    @Synchronized
+    fun esborraEndoll(id: Long) {
+        bd.esborraEndoll(id)
+        lectors.remove(id)
+        fallades.remove(id)
+        synchronized(acumulatsEndoll) { acumulatsEndoll.remove(id) }
+        haCanviat()
+    }
+
+    /**
+     * L'endoll passa a mesurar un aparell (o cap). Un aparell només té un endoll: el que tenia queda sense. Si l'endoll no
+     * ha estat mai a cap altre aparell, el període comença amb el seu historial (fins a 8 dies enrere): l'endoll ja era a
+     * l'aparell abans de dir-ho a l'app, i les vegades d'aquells dies també se'n beneficien. Si ve d'un altre aparell, des d'ara.
+     */
+    @Synchronized
+    fun posaEndollA(endollId: Long, aparellId: Long?) {
+        val ara = ara()
+        val periodes = bd.periodesEndoll()
+        if (aparellId != null) {
+            periodes.filter { it.aparellId == aparellId && it.finsA == null && it.endollId != endollId }.forEach { bd.posaEndollA(it.endollId, null, ara) }
+        }
+        val seus = periodes.filter { it.endollId == endollId }
+        if (aparellId != null && seus.all { it.aparellId == aparellId }) {
+            bd.esborraPeriodesEndoll(endollId)
+            val inici = listOfNotNull(bd.primeraHoraEndoll(endollId), bd.primerMinutEndoll(endollId), ara).min()
+            bd.posaEndollA(endollId, aparellId, inici)
+            haCanviat(inici - 86400)
+        } else {
+            bd.posaEndollA(endollId, aparellId, ara)
+            haCanviat()
+        }
+    }
+
+    /**
+     * Llegeix els endolls, tots alhora: la potència d'ara. Cada minut acabat es desa com un minut de l'endoll, amb la mitjana
+     * de les lectures que n'hi ha hagut. Un que no respon no es torna a provar fins al cap d'un minut (de 5, després de tres
+     * cops), i es conserva la seva última lectura. Amb [nomesNuvol] (des de fora de casa), només els Shelly, pel núvol de Shelly.
+     */
+    suspend fun llegeixEndolls(nomesNuvol: Boolean = false): Map<Long, LecturaEndoll> = withContext(Dispatchers.IO) {
+        val ara = ara()
+        val llista = bd.endolls().filter { llegible(it) && (fallades[it.id]?.first ?: 0) <= ara && (!nomesNuvol || it.tipus == TipusEndoll.SHELLY) }
+        if (llista.isEmpty()) return@withContext lecturesEndolls
+        val noves = coroutineScope { llista.map { e -> async { e.id to llegeix(e, nomesNuvol) } }.awaitAll() }
+        val resultat = HashMap(lecturesEndolls)
+        for ((id, l) in noves) if (l != null) {
+            resultat[id] = l
+            acumula(id, l)
+        }
+        lecturesEndolls = resultat
+        resultat
+    }
+
+    private fun llegeix(e: Endoll, nomesNuvol: Boolean): LecturaEndoll? {
+        val local = if (nomesNuvol) null else runCatching { lector(e).lectura() }.getOrNull()
+        val l = local ?: if (e.tipus == TipusEndoll.SHELLY && config.teNuvol) {
+            runCatching { ShellyEndoll.lecturaNuvol(config.servidorNuvol, config.clauNuvol, e.mac) }.getOrNull()
+        } else null
+        if (l == null) {
+            val cops = (fallades[e.id]?.second ?: 0) + 1
+            fallades[e.id] = (ara() + if (cops >= 3) 300 else 60) to cops
+            // Potser ha canviat d'adreça o de sessió: la propera vegada, de nou
+            if (cops >= 3) lectors.remove(e.id)
+        } else fallades.remove(e.id)
+        return l
+    }
+
+    private fun acumula(endollId: Long, l: LecturaEndoll) {
+        val minut = l.ts / 60 * 60
+        val acabat = synchronized(acumulatsEndoll) {
+            val a = acumulatsEndoll[endollId]
+            if (a == null || a.first == minut) {
+                acumulatsEndoll[endollId] = Triple(minut, (a?.second ?: 0.0) + l.w, (a?.third ?: 0) + 1)
+                null
+            } else {
+                acumulatsEndoll[endollId] = Triple(minut, l.w, 1)
+                a
+            }
+        }
+        // El minut acabat: la potència mitjana, en Wh (amb una sola lectura, aproximat: la de 5 minuts de l'endoll el pot millorar)
+        if (acabat != null) bd.insereixMinutsEndoll(endollId, listOf(MinutEndoll(acabat.first, acabat.second / acabat.third / 60, aprox = acabat.third < 2)))
+        // Amb comptador (els Shelly): entre dues lectures separades (des de fora, cada 15 minuts; o després d'una estona sense
+        // llegir), l'energia es reparteix a parts iguals pels minuts d'entremig, com el comptador de l'EM des de fora. El
+        // comptador es desa a la configuració: el treball de fons corre en un procés nou cada vegada
+        val wh = l.comptadorWh ?: return
+        val abans = config.comptadorEndoll(endollId)
+        config.posaComptadorEndoll(endollId, l.ts, wh)
+        if (abans == null) return
+        val minuts = ((minut - abans.first / 60 * 60) / 60).toInt()
+        if (minuts in 2..7 * 24 * 60 && wh >= abans.second) {
+            val perMinut = (wh - abans.second) / minuts
+            bd.insereixMinutsEndoll(endollId, (0 until minuts).map { i -> MinutEndoll(abans.first / 60 * 60 + i * 60L, perMinut, aprox = true) })
+        }
+    }
+
+    /**
+     * L'historial dels endolls, com a molt un cop cada 10 minuts (o amb [forca]) i mai dos alhora: les hores (fins a 8 dies
+     * enrere la primera vegada, el que l'endoll guarda; les dues últimes es tornen a demanar, per si l'endoll les ha acabat
+     * de tancar) i la potència de cada 5 minuts de les últimes 12 hores, si el firmware la dona. Dels Shelly, les hores es fan
+     * amb els seus minuts. Després, el que se n'aprèn. Torna si algun ha respost.
+     */
+    suspend fun sincronitzaEndolls(forca: Boolean = false): Boolean = withContext(Dispatchers.IO) {
+        val llista = bd.endolls().filter { llegible(it) }
+        if (llista.isEmpty() || (!forca && ara() - config.endollsMirat < 10 * 60)) return@withContext false
+        if (!sincronitzantEndolls.tryLock()) return@withContext false
+        try {
+            config.endollsMirat = ara()
+            var algun = false
+            var desDeMinim = Long.MAX_VALUE
+            if (llista.any { it.tipus == TipusEndoll.SHELLY }) {
+                runCatching { llegeixEndolls() }
+                for (e in llista.filter { it.tipus == TipusEndoll.SHELLY }) {
+                    horesDelsMinuts(e)
+                    algun = true
+                }
+            }
+            for (e in llista.filter { it.tipus == TipusEndoll.TAPO }) {
+                val t = lector(e)
+                runCatching {
+                    val lectura = t.lectura()
+                    acumula(e.id, lectura)
+                    val horaAra = iniciHora(ara(), zona)
+                    val limit = horaAra - 8 * 86400
+                    if (config.endollHoraLocal == 0) esbrinaHora(t, lectura)
+                    if (config.endollHoraLocal != 0) {
+                        val desDe = max(bd.darreraHoraEndoll(e.id)?.minus(3600) ?: limit, limit)
+                        if (desDe < horaAra) {
+                            // Només les hores acabades: la d'ara la fan els minuts
+                            val hores = horesEndoll(t, desDe, horaAra).filter { it.first < horaAra }
+                            bd.insereixHoresEndoll(e.id, hores)
+                            hores.minOfOrNull { it.first }?.let { desDeMinim = min(desDeMinim, it) }
+                        }
+                    }
+                    if (e.mac !in config.endollsSensePotencia) {
+                        val darrer = bd.darrerMinutEndoll(e.id) ?: (ara() - 12 * 3600)
+                        val d5 = max(darrer + 60, ara() - 12 * 3600) / 300 * 300
+                        if (ara() - d5 > 600) {
+                            val punts = t.potencia5min(d5, ara() / 300 * 300, zona, config.endollHoraLocal == 2)
+                            if (punts.isEmpty() && (t as? Tapo)?.senseMetode == true) config.endollsSensePotencia = config.endollsSensePotencia + e.mac
+                            val minuts = punts.flatMap { (ts, w) -> (0 until 5).map { i -> MinutEndoll(ts + i * 60L, w / 60, aprox = true) } }.filter { it.ts < ara() - 60 }
+                            if (minuts.isNotEmpty()) {
+                                bd.insereixMinutsEndoll(e.id, minuts)
+                                desDeMinim = min(desDeMinim, minuts.first().ts)
+                            }
+                        }
+                    }
+                    algun = true
+                }
+            }
+            if (desDeMinim != Long.MAX_VALUE) haCanviat(desDeMinim - 86400)
+            if (algun) aprenDelsEndolls()
+            algun
+        } finally {
+            sincronitzantEndolls.unlock()
+        }
+    }
+
+    /**
+     * Les hores d'un endoll sense historial (els Shelly), fetes amb els seus minuts: cada hora acabada des de l'última que
+     * té (com a molt 8 dies enrere) amb 55 minuts o més, la suma a escala de 60. Una hora amb forats (l'app tancada, sense
+     * vigilància ni núvol) es deixa estar: les vegades d'aquella hora van com sense endoll.
+     */
+    private fun horesDelsMinuts(e: Endoll) {
+        val horaAra = iniciHora(ara(), zona)
+        var h = max(bd.darreraHoraEndoll(e.id)?.plus(3600) ?: 0, horaAra - 8 * 86400)
+        val noves = mutableListOf<Pair<Long, Double>>()
+        while (h < horaAra) {
+            val m = bd.minutsEndoll(e.id, h, h + 3599)
+            if (m.size >= 55) noves += h to m.sumOf { it.wh } * 60.0 / m.size
+            h += 3600
+        }
+        bd.insereixHoresEndoll(e.id, noves)
+    }
+
+    /** Les hores d'un endoll entre dos instants, per trossos de 8 dies, amb la manera d'entendre els timestamps ja esbrinada. */
+    private fun horesEndoll(t: LectorEndoll, desDe: Long, finsA: Long): List<Pair<Long, Double>> {
+        val local = config.endollHoraLocal == 2
+        val sortida = mutableListOf<Pair<Long, Double>>()
+        var s = desDe
+        while (s < finsA) {
+            val e = min(s + 8 * 86400, finsA)
+            sortida += t.energiaHores(s, e - 1, zona, local).filter { it.first in s until e }
+            s = e
+        }
+        return sortida
+    }
+
+    @Volatile
+    private var esbrinatA = 0L
+
+    /**
+     * Com entén l'endoll els timestamps: segons UTC de debò (el crate tapo d'avui) o l'hora local escrita com si fos UTC
+     * (les versions d'abans). Amb cada manera es demanen les hores d'avui; la que suma el consum d'avui de l'endoll
+     * (today_energy) és la bona, i només es decideix si guanya clarament (l'altra s'equivoca el doble). Si no es pot (poc
+     * consum avui), es torna a provar al cap d'una hora; mentrestant no es desa cap hora.
+     */
+    private fun esbrinaHora(t: LectorEndoll, l: LecturaEndoll) {
+        val avui = l.whAvui ?: return
+        if (avui < 5 || ara() - esbrinatA < 3600) return
+        esbrinatA = ara()
+        val inici = iniciDia(LocalDate.now(zona))
+        fun suma(local: Boolean) = runCatching { t.energiaHores(inici, ara(), zona, local).filter { it.first in inici..ara() }.sumOf { it.second } }.getOrNull()
+        val utc = suma(false) ?: return
+        val loc = suma(true) ?: return
+        val eUtc = abs(utc - avui)
+        val eLoc = abs(loc - avui)
+        val tolerancia = max(30.0, 0.2 * avui)
+        config.endollHoraLocal = when {
+            eUtc <= tolerancia && eLoc <= tolerancia && abs(eUtc - eLoc) < 1 -> 1 // iguals (una zona sense desfàs): tant se val
+            eUtc <= tolerancia && eUtc * 2 <= eLoc -> 1
+            eLoc <= tolerancia && eLoc * 2 <= eUtc -> 2
+            else -> 0
+        }
+    }
+
+    /**
+     * El que l'app aprèn dels endolls: cada vegada que l'endoll confirma ([Com.ENDOLL]) és una mostra de la firma de
+     * l'aparell (font «endoll»; com a molt les 20 últimes per aparell). Si n'hi ha de noves, les vegades d'aquells dies es
+     * tornen a repartir: l'aparell ja es reconeix sol en altres moments.
+     */
+    @Synchronized
+    private fun aprenDelsEndolls() {
+        val periodes = bd.periodesEndoll()
+        if (periodes.isEmpty()) return
+        val aparells = bd.aparells()
+        var desDeNova = Long.MAX_VALUE
+        for (p in periodes) {
+            val a = aparells.firstOrNull { it.id == p.aparellId } ?: continue
+            var nova = false
+            for (v in bd.vegadesEndoll(a.id, p.desDe, 20).filter { p.finsA == null || it.ts < p.finsA }) {
+                if (bd.teMostra(a.id, v.ts, "endoll")) continue
+                val interval = if (a.funciona == Funcionament.SOL) v.w * 0.8 to v.w * 1.2 else null
+                bd.desaMostra(a.id, v.ts, v.w, v.fi - v.ts + 60, "endoll", interval, v.variacio, v.arrencada)
+                desDeNova = min(desDeNova, v.ts)
+                nova = true
+            }
+            if (nova) bd.retallaMostres(a.id, "endoll", 20)
+        }
+        if (desDeNova != Long.MAX_VALUE) haCanviat(desDeNova - 86400)
+    }
+
+    /**
+     * Els minuts i les hores d'un endoll, carregats per finestres de 7 dies: en repartir milers de vegades no es fa una
+     * consulta per cada una. Els minuts van ordenats: es busquen per cerca binària.
+     */
+    private inner class DadesEndoll(private val endollId: Long) {
+        private var desDe = 1L
+        private var finsA = 0L
+        private var minuts: List<MinutEndoll> = emptyList()
+        private var hores: List<Pair<Long, Double>> = emptyList()
+
+        private fun carrega(a: Long, b: Long) {
+            if (a >= desDe && b <= finsA) return
+            desDe = a - 600
+            finsA = max(b + 3600, desDe + 7 * 86400)
+            minuts = bd.minutsEndoll(endollId, desDe, finsA)
+            hores = bd.horesEndoll(endollId, iniciHora(desDe, zona), finsA)
+        }
+
+        private fun primer(ts: Long): Int {
+            var lo = 0
+            var hi = minuts.size
+            while (lo < hi) {
+                val mig = (lo + hi) / 2
+                if (minuts[mig].ts < ts) lo = mig + 1 else hi = mig
+            }
+            return lo
+        }
+
+        /** Els minuts de [a] a [b], tots dos inclosos. */
+        fun minuts(a: Long, b: Long): List<MinutEndoll> {
+            carrega(a, b)
+            return minuts.subList(primer(a), primer(b + 1))
+        }
+
+        fun hores(a: Long, b: Long): List<Pair<Long, Double>> {
+            carrega(a, b)
+            return hores.filter { it.first in a until b }
+        }
+    }
+
+    /**
+     * Què diuen els endolls d'una vegada (maqueta 19): l'aparell que tenia l'endoll encès mentre durava (el primer que ho
+     * compleixi), i els que el tenien apagat. Només els endolls dels aparells que poden ser aquesta vegada ([periodes], ja
+     * filtrats pel canal), i només si eren posats a l'aparell en aquell moment. [altresWh]: el que han gastat les altres
+     * vegades de les mateixes hores, per al veredicte amb les hores.
+     */
+    private fun veredictes(v: Vegada, periodes: List<PeriodeEndoll>, dades: HashMap<Long, DadesEndoll>, altresWh: Double): Pair<Long?, Set<Long>> {
+        var seu: Long? = null
+        val no = mutableSetOf<Long>()
+        for (p in periodes) {
+            if (p.desDe > v.fi || (p.finsA != null && p.finsA <= v.ts)) continue
+            when (veredicte(v, dades.getOrPut(p.endollId) { DadesEndoll(p.endollId) }, altresWh)) {
+                Veredicte.SEU -> if (seu == null) seu = p.aparellId
+                Veredicte.NO_SEU -> no += p.aparellId
+                Veredicte.NO_SE_SAP -> {}
+            }
+        }
+        return seu to no
+    }
+
+    /** Què diu un endoll d'una vegada: amb els seus minuts (i els 10 d'abans) si n'hi ha prou; si no, amb les seves hores. */
+    private fun veredicte(v: Vegada, d: DadesEndoll, altresWh: Double): Veredicte {
+        val ambMinuts = veredicteEndoll(v.w, v.ts, v.fi, d.minuts(v.ts, v.fi), d.minuts(v.ts - 600, v.ts - 60))
+        if (ambMinuts != Veredicte.NO_SE_SAP) return ambMinuts
+        return veredicteHores(v.kwh, v.ts, v.fi, d.hores(iniciHora(v.ts, zona), v.fi + 1), altresWh) { iniciHora(it, zona) }
+    }
+
+    /** Les vegades agrupades per cada hora que toquen, per saber què més hi havia a la mateixa hora. */
+    private fun perHora(vegades: List<Vegada>): Map<Long, List<Vegada>> {
+        val perHora = HashMap<Long, MutableList<Vegada>>()
+        for (v in vegades) {
+            var h = iniciHora(v.ts, zona)
+            while (h <= v.fi) {
+                perHora.getOrPut(h) { mutableListOf() } += v
+                h += 3600
+            }
+        }
+        return perHora
+    }
+
+    /** El que han gastat les altres vegades de les hores d'una vegada (Wh). */
+    private fun altresWh(v: Vegada, perHora: Map<Long, List<Vegada>>): Double {
+        val vistes = java.util.Collections.newSetFromMap(java.util.IdentityHashMap<Vegada, Boolean>())
+        var h = iniciHora(v.ts, zona)
+        while (h <= v.fi) {
+            perHora[h]?.forEach { if (it !== v) vistes += it }
+            h += 3600
+        }
+        return vistes.sumOf { it.kwh } * 1000
+    }
+
+    /** L'endoll d'un aparell per a la fitxa: què n'ha après l'app i el que ha mesurat. */
+    private fun fitxaEndoll(aparellId: Long): EndollFitxa? {
+        val (e, p) = endollDe(aparellId) ?: return null
+        val mes = iniciDia(LocalDate.now(zona).withDayOfMonth(1))
+        val kwhMes = bd.horesEndoll(e.id, max(mes, p.desDe), ara()).sumOf { it.second } / 1000
+        return EndollFitxa(e, p, queNHaApres(aparellId, e, p), mesuraEndoll(e, p), lecturesEndolls[e.id], kwhMes)
+    }
+
+    /**
+     * Què n'ha après l'app d'un aparell amb l'endoll, dels últims 7 dies sencers: de les vegades que l'endoll confirma,
+     * quantes hauria reconegut sola (amb la firma que té sense les mostres de l'endoll mateix, que si no es valida a si
+     * mateixa); quantes d'altres li hauria donat i l'endoll diu que no; i cada dia, el que l'app sola li donava i el que
+     * l'endoll ha mesurat.
+     */
+    private fun queNHaApres(aparellId: Long, e: Endoll, p: PeriodeEndoll): QueNHaApres? {
+        val avui = LocalDate.now(zona)
+        val desDe = max(p.desDe, iniciDia(avui.minusDays(7)))
+        val finsA = iniciDia(avui)
+        val vegades = bd.vegades(desDe, finsA).filter { it.ts >= desDe }
+        if (vegades.isEmpty() && bd.horesEndoll(e.id, desDe, finsA).isEmpty()) return null
+        val index = IndexEtiquetes(bd.etiquetes())
+        val exclosos = bd.aparells().filter { it.funciona == Funcionament.SEMPRE }.map { it.id }.toSet()
+        val refs = referencies(senseFont = "endoll") + referenciesLinia()
+        val sola = HashMap<Long, Long?>()
+        fun sola(v: Vegada) = sola.getOrPut(v.id) { assigna(v, candidatsDe(v), refs, index.de(v), exclosos).first }
+        val seves = vegades.filter { it.aparellId == aparellId && it.com == Com.ENDOLL }
+        val encertades = seves.count { sola(it) == aparellId }
+        val dades = DadesEndoll(e.id)
+        val hores = perHora(vegades)
+        val deMes = vegades.count { v ->
+            (v.aparellId != aparellId || v.com != Com.ENDOLL) && sola(v) == aparellId && veredicte(v, dades, altresWh(v, hores)) == Veredicte.NO_SEU
+        }
+        val primerDia = Instant.ofEpochSecond(p.desDe).atZone(zona).toLocalDate()
+        val dies = (7 downTo 1).map { avui.minusDays(it.toLong()) }.filter { !it.isBefore(primerDia) }.map { dia ->
+            val d0 = iniciDia(dia)
+            val d1 = iniciDia(dia.plusDays(1))
+            val appSola = vegades.filter { sola(it) == aparellId }.sumOf { it.kwh * part(it, d0, d1) }
+            val endoll = bd.horesEndoll(e.id, d0, d1).sumOf { it.second } / 1000
+            // Quadra si l'app sola hi veu entre el 60 i el 130 % del que diu l'endoll (l'app no compta el que fa menys de
+            // 250 W: les bombes del rentaplats), o si la diferència és petita
+            val quadra = abs(appSola - endoll) <= 0.15 || appSola in endoll * 0.6..endoll * 1.3
+            DiaEndoll(dia, appSola, endoll, quadra)
+        }
+        return QueNHaApres(seves.size, encertades, deMes, dies, p.desDe)
+    }
+
+    /**
+     * El que l'endoll ha mesurat d'un aparell: la mitjana per dia dels dies sencers (sense avui ni el dia que s'hi va
+     * posar, si en queden), els últims 7 dies, i de les lectures en directe de l'última setmana, les hores encès i l'espera.
+     */
+    private fun mesuraEndoll(e: Endoll, p: PeriodeEndoll): MesuraEndoll? {
+        val hores = bd.horesEndoll(e.id, p.desDe, ara())
+        if (hores.isEmpty()) return null
+        val perDia = hores.groupBy { Instant.ofEpochSecond(it.first).atZone(zona).toLocalDate() }.mapValues { (_, l) -> l.sumOf { it.second } }.toSortedMap()
+        val avui = LocalDate.now(zona)
+        val sencers = perDia.filterKeys { it != avui && iniciDia(it) >= p.desDe }
+        val base = sencers.ifEmpty { perDia }
+        val us = usEndoll(bd.minutsEndoll(e.id, max(p.desDe, ara() - 7 * 86400), ara()).filter { !it.aprox })
+        return MesuraEndoll(base.values.average(), base.size, perDia.toList().takeLast(7), us?.first, us?.second, us?.third)
+    }
+
+    /**
+     * Els endolls que ja es poden moure (Per fer): l'app encerta sola totes les vegades del seu aparell des de fa una
+     * setmana i no li'n dona cap d'altre. Es proposen els aparells que encara no té apresos i els que més vegades fan
+     * (on més pot aprendre), sense els que ja tenen endoll. El que l'usuari ha dit de deixar com és, no.
+     */
+    fun propostesMoure(): List<PropostaMoure> {
+        val oberts = bd.periodesEndoll().filter { it.finsA == null }
+        if (oberts.isEmpty()) return emptyList()
+        val ignorats = config.moureIgnorats
+        val aparells = bd.aparells()
+        val endolls = bd.endolls()
+        val ambEndoll = oberts.map { it.aparellId }.toSet()
+        val refs = referencies()
+        val setmana = bd.vegades(ara() - 7 * 86400, ara() + 60)
+        val candidats = aparellsAEntrenar().filter { it.id !in ambEndoll }
+        val suggerits = (candidats.filter { refs[it.id] == null } +
+            candidats.filter { refs[it.id] != null }.sortedByDescending { c -> setmana.count { it.aparellId == c.id } }).take(3)
+        return oberts.mapNotNull { p ->
+            if ("${p.endollId}:${p.aparellId}" in ignorats) return@mapNotNull null
+            val e = endolls.firstOrNull { it.id == p.endollId } ?: return@mapNotNull null
+            val a = aparells.firstOrNull { it.id == p.aparellId } ?: return@mapNotNull null
+            val q = queNHaApres(a.id, e, p)?.takeIf { it.apres } ?: return@mapNotNull null
+            PropostaMoure(e, a, q, suggerits)
+        }
+    }
+
+    /** «Deixa'l on és»: aquesta proposta no es torna a fer mentre l'endoll sigui en aquest aparell. */
+    fun ignoraMoure(endollId: Long, aparellId: Long) {
+        config.moureIgnorats = config.moureIgnorats + "$endollId:$aparellId"
     }
 }

@@ -25,8 +25,8 @@ android {
         applicationId = "cat.jordi.wakker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 38
-        versionName = "1.1.3"
+        versionCode = 39
+        versionName = "1.2.0"
         // Tesseract porta codi natiu: només el dels mòbils (a la versió de prova, també el de l'emulador)
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
@@ -79,6 +79,8 @@ android {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
+    // L'org.json de debò a les proves unitàries (l'android.jar només en té els esquelets): per al descobriment dels Tapo
+    testImplementation("org.json:json:20240303")
     val bom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(bom)
     implementation("androidx.compose.ui:ui")

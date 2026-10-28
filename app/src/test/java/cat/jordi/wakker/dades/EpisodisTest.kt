@@ -4,7 +4,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class EpisodisTest {
     private val t0 = 1_792_800_000L
@@ -30,7 +29,7 @@ class EpisodisTest {
 
     @Test
     fun laBombaDeCalorArrencaSuau() {
-        // Com la de Guíxols: puja a poc a poc fins als 490 W
+        // Com una bomba de calor: puja a poc a poc fins als 490 W
         val eps = Episodis.troba(serie(300) { i ->
             when (i - 100) {
                 0 -> Triple(250.0, 300.0, 200.0)
@@ -137,7 +136,7 @@ class EpisodisTest {
 
     @Test
     fun elQueSEncenASobreEsUnaAltraVegada() {
-        // El cotxe (2,4 kW, 6 hores) i, a sobre, la placa (2,5 kW que polsa) durant 20 minuts, com el dissabte 24 a Guíxols
+        // El cotxe (2,4 kW, 6 hores) i, a sobre, la placa (2,5 kW que polsa) durant 20 minuts
         val eps = Episodis.troba(serie(600) { i ->
             when {
                 i in 150 until 170 -> Triple(2400.0 + 2500.0, 2400.0 + 4000.0, 2400.0 + 500.0)
@@ -163,50 +162,5 @@ class EpisodisTest {
         // Un aparell que va pujant (la bomba de calor) tampoc es parteix
         val puja = Episodis.troba(serie(300) { i -> if (i in 100 until 170) constant(330.0 + (i - 100) * 5.0) else null }, llargada = 2)
         assertEquals(1, puja.size)
-    }
-
-    /** Les dades d'una pinça amb tots els camps (fora del repositori): [ts, energia, ..., màx, mín, ...]. */
-    private fun llegeix(nom: String): List<MinutW>? {
-        val fitxer = File(System.getProperty("user.home"), "Projectes/Consum-Shelly/recerca/reactiva/$nom")
-        if (!fitxer.exists()) return null
-        return Regex("""\[(\d{10}),([^\[\]]*)]""").findAll(fitxer.readText()).map { m ->
-            val v = m.groupValues[2].split(",").map { it.trim().toDouble() }
-            // total_act_energy (Wh del minut), ..., max_act_power, min_act_power
-            MinutW(m.groupValues[1].toLong(), v[0] * 60, v[4], v[5])
-        }.toList()
-    }
-
-    /** Amb la setmana real de Guíxols (19–26/10): la bomba de calor al garatge i el que es repeteix a la resta. */
-    @Test
-    fun setmanaRealDeGuixols() {
-        val total = llegeix("dades_completes_guixols.json") ?: return
-        val garatge = llegeix("dades_completes_guixols_pinca2.json") ?: return
-        // Al garatge, la bomba de calor de l'aigua: dues vegades, uns 490 W, més d'una hora, arrencada suau
-        val bomba = Episodis.troba(garatge).filter { it.minuts >= 30 }
-        assertEquals(2, bomba.size)
-        bomba.forEach {
-            assertEquals(490.0, it.w, 20.0)
-            assertEquals(Forma.SUAU, it.forma)
-        }
-        // A la resta de la casa: la cosa de 330–460 W que fa un pic, cada 3 hores, i la de 3 minuts cada quart d'hora
-        val g = garatge.associateBy { it.ts }
-        val resta = total.map { m -> val l = g[m.ts]?.w ?: 0.0; MinutW(m.ts, m.w - l, m.max - l, m.min - l) }
-        val repetits = Episodis.repetits(Episodis.troba(resta)).map(Episodis::repetit)
-        val motor = repetits.single { it.minuts in 5.0..7.0 }
-        assertEquals(Forma.PIC, motor.forma)
-        assertTrue(motor.cadaMinuts in 120.0..240.0)
-        // (des de la 0.28 també hi ha els cicles que s'encenen a sobre de la càrrega del cotxe: el més nombrós és el del cap de setmana)
-        val curt = repetits.filter { it.minuts <= 3.0 }.maxBy { it.cops.size }
-        assertTrue(curt.cops.size >= 30)
-        assertEquals(Forma.CONSTANT, curt.forma)
-        // Dissabte 24 (maqueta 16): la cuina de les 20:31, a sobre de la càrrega del cotxe de les 19:54, és una vegada a part
-        val zona = java.time.ZoneId.of("Europe/Madrid")
-        fun a(h: Int, m: Int) = java.time.LocalDate.of(2026, 10, 24).atTime(h, m).atZone(zona).toEpochSecond()
-        val vegades = Episodis.troba(resta, llargada = 2)
-        val cotxe = vegades.single { it.ts in a(19, 50)..a(19, 58) && it.minuts > 300 }
-        val cuina = vegades.filter { it.ts in a(20, 28)..a(21, 10) && it.w > 1500 }
-        assertTrue(cuina.isNotEmpty())
-        // El cotxe es queda uns 14–16 kWh (abans, 18,05 kWh amb tot el que tenia a sobre)
-        assertTrue(cotxe.kwh in 13.5..16.5)
     }
 }

@@ -22,7 +22,7 @@ data class LecturaFactura(val pais: Pais, val contracte: Contracte, val trobats:
  *   «Netbeheerkosten»…); a cada secció, el preu de la línia. Els fixos es passen a per dia.
  * - Espanya: cada preu en «€/kW» o «€/kWh» de la línia, amb el període que té al davant (P1, punta…), perquè
  *   l'OCR pot ajuntar dues columnes en una sola línia. També l'impost elèctric, l'IVA, el bo social i el lloguer.
- * Provat amb el contracte d'Utrecht i amb factures reals d'Endesa i d'Estabanell (proves/factures/), que tenen
+ * Provat amb un contracte holandès i amb factures espanyoles reals, que tenen
  * errors d'OCR com «0.042740» en lloc de «0,042740».
  */
 object Factura {
@@ -137,7 +137,7 @@ object Factura {
                 val p = periode(tros)
                 val v = num(m.groupValues[1])
                 if (potencia) {
-                    // A Endesa, la potència de la vall és «P3»; a la tarifa és el P2
+                    // Algunes factures diuen «P3» a la potència de la vall; a la tarifa és el P2
                     if (p == 1) posa(CampFactura.ES_P1, v, l) else if (p > 1) posa(CampFactura.ES_P2, v, l)
                 } else {
                     posa(

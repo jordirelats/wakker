@@ -109,7 +109,8 @@ object Ginys {
                     val repo = (context.applicationContext as WakkerApp).repo
                     val e = repo.config.giny
                     if (repo.config.configurat && (e == null || System.currentTimeMillis() / 1000 - e.ts > 120)) {
-                        val l = repo.lectura()
+                        // Com a molt 8 s: Android dona temps limitat a un receptor (1.1.3)
+                        val l = kotlinx.coroutines.withTimeoutOrNull(8_000) { repo.lectura() }
                         if (l != null) {
                             actualitza(context, repo, l, forca = true)
                             return@runCatching
@@ -264,7 +265,7 @@ object Ginys {
             textAlign = Paint.Align.CENTER
             if (negreta) typeface = android.graphics.Typeface.DEFAULT_BOLD
         }
-        c.drawText("${num(part * 100.0)} %", cx, cy - 9 * escala, lletra(13f, ContextCompat.getColor(context, R.color.giny_text), true))
+        c.drawText("${num(part * 100.0)}\u00A0%", cx, cy - 9 * escala, lletra(13f, ContextCompat.getColor(context, R.color.giny_text), true))
         c.drawText(context.getString(R.string.ara_arc_de, num(limitKw, 2)), cx, cy - 1 * escala, lletra(9f, ContextCompat.getColor(context, R.color.giny_suau), false))
         return bmp
     }

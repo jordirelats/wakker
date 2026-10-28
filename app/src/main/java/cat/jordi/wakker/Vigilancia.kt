@@ -58,10 +58,12 @@ class Vigilancia : Service() {
             if (l != null) {
                 val limit = repo.config.tarifa.limitKw
                 if (limit != null && calAvisarPotencia(repo.config, l.total.w, WakkerApp.oberta)) {
-                    // Primer els minuts nous (a casa i si no s'està sincronitzant): el que hi ha encès surt de les vegades que
-                    // encara duren (maqueta 15)
-                    repo.sincronitzaSiLliure(l)
+                    // Primer l'avís, de seguida, amb el que se sap; després els minuts nous (a casa i si no s'està sincronitzant),
+                    // i la mateixa notificació amb el que hi ha encès segons les vegades que encara duren (maqueta 15). Abans
+                    // s'esperava la sincronització, que pot trigar un minut (1.1.3)
                     Avisos.avisaPotencia(this, l.total.w, limit, runCatching { repo.encesAra(l) }.getOrDefault(emptyList()))
+                    repo.sincronitzaSiLliure(l)
+                    Avisos.avisaPotencia(this, l.total.w, limit, runCatching { repo.encesAra(l) }.getOrDefault(emptyList()), callat = true)
                 }
                 runCatching { NotificationManagerCompat.from(this).notify(ID, notificacio(l.total.w)) }
                 // El giny de la pantalla d'inici, com a molt un cop per minut

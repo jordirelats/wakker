@@ -55,7 +55,7 @@ private const val KWH_ANY_PER_W = 8.76
 /**
  * La caça del sempre encès (maqueta 15): el que la casa gasta quan no fas res, i quant costa l'any. Apagues o desendolles una
  * cosa i la pantalla ensenya de seguida quant ha baixat; si hi dius què era, l'aparell en guarda el consum en espera (o, si
- * està sempre encès, la seva potència). A Guíxols, 79 W tot l'any són uns 113 €.
+ * està sempre encès, la seva potència). Per exemple, 79 W tot l'any són uns 113 € a 0,163 €/kWh.
  */
 @Composable
 fun PantallaEspera(vm: WakkerViewModel) {

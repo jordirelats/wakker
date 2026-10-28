@@ -57,6 +57,10 @@ import java.time.format.TextStyle
 @Composable
 fun PantallaPassat(vm: WakkerViewModel) {
     var aparellId by rememberSaveable { mutableStateOf<Long?>(null) }
+    // El dia i les hores, aquí i no al formulari: en tornar del resultat («Canvia l'estona», enrere) es mantenen (1.1.3)
+    var fa by rememberSaveable { mutableIntStateOf(1) }
+    var de by rememberSaveable { mutableStateOf<Int?>(null) }
+    var fins by rememberSaveable { mutableStateOf<Int?>(null) }
     val aparell = vm.aparellsAEntrenar.firstOrNull { it.id == aparellId }
     val estona = vm.estona
     // Enrere des del resultat torna al formulari
@@ -66,7 +70,7 @@ fun PantallaPassat(vm: WakkerViewModel) {
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         if (estona != null && aparell != null) Resultat(vm, aparell, estona)
-        else Formulari(vm, aparellId) { aparellId = it }
+        else Formulari(vm, aparellId, { aparellId = it }, fa, { fa = it }, de, { de = it }, fins, { fins = it })
         Spacer(Modifier.height(16.dp))
     }
 }
@@ -80,11 +84,11 @@ private fun hhmm(minuts: Int) = "%d:%02d".format(minuts / 60, minuts % 60)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Formulari(vm: WakkerViewModel, aparellId: Long?, triaAparell: (Long) -> Unit) {
+private fun Formulari(
+    vm: WakkerViewModel, aparellId: Long?, triaAparell: (Long) -> Unit,
+    fa: Int, posaFa: (Int) -> Unit, de: Int?, posaDe: (Int) -> Unit, fins: Int?, posaFins: (Int) -> Unit,
+) {
     val context = LocalContext.current
-    var fa by rememberSaveable { mutableIntStateOf(1) }
-    var de by rememberSaveable { mutableStateOf<Int?>(null) }
-    var fins by rememberSaveable { mutableStateOf<Int?>(null) }
     fun rellotge(ara: Int?, perDefecte: Int, desa: (Int) -> Unit) {
         val m = ara ?: perDefecte
         TimePickerDialog(context, { _, h, min -> desa(h * 60 + min) }, m / 60, m % 60, true).show()
@@ -104,15 +108,15 @@ private fun Formulari(vm: WakkerViewModel, aparellId: Long?, triaAparell: (Long)
                     1 -> stringResource(R.string.passat_ahir, diaCurt(dia(1)))
                     else -> diaCurt(dia(k))
                 }
-                FilterChip(fa == k, { fa = k }, label = { Text(nom) })
+                FilterChip(fa == k, { posaFa(k) }, label = { Text(nom) })
             }
         }
         Text(stringResource(R.string.passat_quina_hora), Modifier.padding(top = 8.dp), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton({ rellotge(de, 17 * 60) { de = it } }, Modifier.weight(1f)) {
+            OutlinedButton({ rellotge(de, 17 * 60) { posaDe(it) } }, Modifier.weight(1f)) {
                 Text(de?.let { stringResource(R.string.passat_de, hhmm(it)) } ?: stringResource(R.string.passat_de_buit))
             }
-            OutlinedButton({ rellotge(fins, (de ?: 17 * 60) + 2 * 60) { fins = it } }, Modifier.weight(1f)) {
+            OutlinedButton({ rellotge(fins, (de ?: 17 * 60) + 2 * 60) { posaFins(it) } }, Modifier.weight(1f)) {
                 Text(fins?.let { stringResource(R.string.passat_fins, hhmm(it)) } ?: stringResource(R.string.passat_fins_buit))
             }
         }
@@ -123,18 +127,21 @@ private fun Formulari(vm: WakkerViewModel, aparellId: Long?, triaAparell: (Long)
                 Text("  " + stringResource(R.string.passat_buscant), fontSize = 14.sp, color = Suau)
             }
         } else {
+            // L'hora del rellotge d'aquell dia: el dia del canvi d'hora en té 23 o 25, i no es pot sumar a la mitjanit
+            val zona = ZoneId.systemDefault()
+            val interval = if (de != null && fins != null) {
+                val desDe = dia(fa).atTime(de / 60, de % 60).atZone(zona).toEpochSecond()
+                // Si «fins a» és abans de «de», és l'endemà (una estona de nit)
+                val diaFi = if (fins <= de) dia(fa - 1) else dia(fa)
+                val finsA = diaFi.atTime(fins / 60, fins % 60).atZone(zona).toEpochSecond().coerceAtMost(System.currentTimeMillis() / 1000)
+                desDe to finsA
+            } else null
+            // Una estona que encara no ha passat: es diu, en lloc d'un botó que no fa res (1.1.3)
+            val futura = interval != null && interval.second <= interval.first
+            if (futura) Text(stringResource(R.string.passat_futura), Modifier.padding(top = 8.dp), fontSize = 13.sp, color = DesconegutText)
             Button(
-                onClick = {
-                    // L'hora del rellotge d'aquell dia: el dia del canvi d'hora en té 23 o 25, i no es pot sumar a la mitjanit
-                    val zona = ZoneId.systemDefault()
-                    val desDe = dia(fa).atTime(de!! / 60, de!! % 60).atZone(zona).toEpochSecond()
-                    // Si «fins a» és abans de «de», és l'endemà (una estona de nit)
-                    val diaFi = if (fins!! <= de!!) dia(fa - 1) else dia(fa)
-                    val finsA = diaFi.atTime(fins!! / 60, fins!! % 60).atZone(zona).toEpochSecond()
-                        .coerceAtMost(System.currentTimeMillis() / 1000)
-                    if (finsA > desDe) vm.buscaEstona(desDe, finsA)
-                },
-                Modifier.fillMaxWidth().padding(top = 10.dp), enabled = aparellId != null && de != null && fins != null,
+                onClick = { interval?.let { (d, f) -> if (f > d) vm.buscaEstona(d, f) } },
+                Modifier.fillMaxWidth().padding(top = 10.dp), enabled = aparellId != null && interval != null && !futura,
             ) { Text(stringResource(R.string.passat_busca)) }
         }
     }

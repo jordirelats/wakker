@@ -134,22 +134,36 @@ fun GraficaPotencia(
             i = j
         }
 
-        // Les ratlles de la potència contractada, si cauen dins de l'escala
+        // Les ratlles de la potència contractada, si cauen dins de l'escala. Les etiquetes, de dalt a baix, i només si no
+        // trepitgen la d'abans: amb la lletra gran, «90 %», «80 %» i «X kW contractats» se solapaven (1.1.3)
         if (limitW != null && contractats != null) {
-            for ((part, color) in listOf(0.8 to PotenciaAlta, 0.9 to PotenciaLimit)) {
-                if (limitW * part > ymax) continue
-                val yy = y(limitW * part)
-                drawLine(color, Offset(marge, yy), Offset(size.width, yy), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 7f)))
-                val text = "${num(part * 100)} %"
-                val mida = mesura.measure(text, EstilEix.copy(color = color)).size
-                drawText(mesura, text, Offset(size.width - mida.width, yy - mida.height - 1.dp.toPx()), EstilEix.copy(color = color))
+            // «ara» va a dalt a la dreta: cap etiqueta no hi pot anar a sobre (1.1.3)
+            var ocupatFins = if (marcaAra) mesura.measure(ara, EstilEix.copy(fontWeight = FontWeight.SemiBold)).size.height.toFloat() else -1f
+            fun etiqueta(text: String, yy: Float, estil: TextStyle) {
+                val mida = mesura.measure(text, estil).size
+                // A sobre de la ratlla; si no hi cap (hi ha la d'abans, o «ara»), a sota; si tampoc, no hi va
+                val d = (yy - mida.height - 1.dp.toPx()).takeIf { it >= ocupatFins }
+                    ?: (yy + 1.dp.toPx()).takeIf { it >= ocupatFins && it + mida.height <= alt }
+                    ?: return
+                // Amb el fons de la targeta: una ratlla que hi passi per sota no talla el text
+                drawRect(Superficie, Offset(size.width - mida.width - 2.dp.toPx(), d), androidx.compose.ui.geometry.Size(mida.width + 2.dp.toPx(), mida.height.toFloat()))
+                drawText(mesura, text, Offset(size.width - mida.width, d), estil)
+                ocupatFins = d + mida.height
             }
+            // Primer totes les ratlles i despr\u00E9s les etiquetes: si no, la del 90 % travessava l'etiqueta de la contractada
+            val etiquetes = mutableListOf<Triple<String, Float, TextStyle>>()
             if (limitW <= ymax) {
                 val yy = y(limitW)
                 drawLine(Eix, Offset(marge, yy), Offset(size.width, yy), 1.dp.toPx())
-                val mida = mesura.measure(contractats, EstilEix).size
-                drawText(mesura, contractats, Offset(size.width - mida.width, yy - mida.height - 1.dp.toPx()), EstilEix)
+                etiquetes += Triple(contractats, yy, EstilEix)
             }
+            for ((part, color) in listOf(0.9 to PotenciaLimit, 0.8 to PotenciaAlta)) {
+                if (limitW * part > ymax) continue
+                val yy = y(limitW * part)
+                drawLine(color, Offset(marge, yy), Offset(size.width, yy), 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 7f)))
+                etiquetes += Triple("${num(part * 100)}\u00A0%", yy, EstilEix.copy(color = color))
+            }
+            for ((text, yy, estil) in etiquetes) etiqueta(text, yy, estil)
         }
 
         clipRect(marge, 0f, size.width, alt) {

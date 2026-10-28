@@ -13,10 +13,10 @@ import kotlin.math.max
 data class MinutW(val ts: Long, val w: Double, val max: Double, val min: Double)
 
 /**
- * Com és la potència d'un aparell quan funciona (maqueta 12). Mesurat a Guíxols (recerca/deteccio/): el rentaplats i el
+ * Com és la potència d'un aparell quan funciona (maqueta 12). Mesurat en una casa de prova: el rentaplats i el
  * cotxe són constants i salten de cop; la placa d'inducció polsa (el màxim i el mínim de cada minut se separen un 89 % de
- * la seva potència); la bomba de calor de l'aigua arrenca suau (els dos primers minuts no hi arriben: 0,7); una cosa de
- * 370 W que s'engega cada 3 hores fa un pic de 2–3 vegades la seva potència en arrencar, com els motors.
+ * la seva potència); la bomba de calor de l'aigua arrenca suau (els dos primers minuts no hi arriben: 0,7); un motor
+ * fa un pic de 2–3 vegades la seva potència en arrencar.
  */
 enum class Forma(@StringRes val textId: Int) {
     CONSTANT(R.string.forma_constant),
@@ -114,7 +114,7 @@ data class Repetit(
 /**
  * Els episodis d'una sèrie de minuts (maqueta 12; prototip: recerca/deteccio/episodis_setmana.py). La base de cada minut és
  * el 20 % més baix de les dues hores d'abans, i un episodi són [llargada] minuts o més (3, o 2 per repartir el consum:
- * l'estufa de Guíxols fa molts cicles de 2 minuts) que la passen 250 W o més. Un minut per sota no el talla; dos, o un forat
+ * una estufa amb termòstat pot fer molts cicles de 2 minuts) que la passen 250 W o més. Un minut per sota no el talla; dos, o un forat
  * de dades de més de 3 minuts, sí. El que s'encén a sobre d'un episodi llarg i pla és un episodi a part ([ambElDeSobre]).
  */
 object Episodis {
@@ -214,9 +214,8 @@ object Episodis {
     }
 
     /**
-     * Els que es repeteixen: potència semblant (±25 %) i durada semblant (±2 minuts o ±30 %), [minim] cops o més. A
-     * Guíxols, la setmana del 19 al 26/10: 330–460 W durant 6 minuts cada 3 hores (10 cops) i 500–830 W durant 3 minuts
-     * cada quart d'hora les nits del cap de setmana (65 cops).
+     * Els que es repeteixen: potència semblant (±25 %) i durada semblant (±2 minuts o ±30 %), [minim] cops o més: per
+     * exemple, un motor de 400 W que s'engega 6 minuts cada 3 hores, o una estufa amb cicles de 3 minuts cada quart d'hora.
      */
     fun repetits(episodis: List<Episodi>, minim: Int = 6): List<List<Episodi>> {
         val grups = mutableListOf<MutableList<Episodi>>()
@@ -248,7 +247,7 @@ object Episodis {
 /**
  * A quin aparell de la línia de la pinça 2 toca un episodi (maqueta 12): el que s'hi assembla ([distancia]), si s'hi
  * assembla prou (a menys de ×4) i clarament més que el segon (×1,4). Si no, no se sap. Al principi, sense mostres, es
- * compara amb la potència típica: a Guíxols, 490 W s'assemblen més a una bomba de calor (1.500 W) que al cotxe (3.500 W).
+ * compara amb la potència típica: 490 W s'assemblen més a una bomba de calor (1.500 W) que al cotxe (3.500 W).
  */
 fun triaLinia(ep: Episodi, aparells: List<Aparell>, refs: Map<Long, Referencia>): Aparell? {
     val d = aparells.map { it to distancia(ep.w, ep.minuts.toDouble(), ep.forma, it, refs[it.id]) }.sortedBy { it.second }

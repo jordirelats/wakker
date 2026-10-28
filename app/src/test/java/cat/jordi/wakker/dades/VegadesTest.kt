@@ -26,7 +26,7 @@ class VegadesTest {
 
     @Test
     fun elQueSEnsenyaEsSeu() {
-        // El rentaplats de diumenge, ensenyat amb una estona passada: és seu encara que s'assembli al bullidor
+        // Un rentaplats ensenyat amb una estona passada: és seu encara que s'assembli al bullidor
         val e = listOf(Etiqueta(0, t0 - 60, t0 + 9 * 60, 1))
         assertEquals(1L to Com.ENSENYAT, assigna(vegada(2100.0, 3), tots, refs, e))
         // A la línia (un altre canal), aquesta etiqueta no hi compta
@@ -37,7 +37,7 @@ class VegadesTest {
 
     @Test
     fun unaEtiquetaNoSEmportaElQueNoEsSeu() {
-        // El cotxe de 19:54 i la placa que s'hi encén a sobre a les 20:31 són una sola vegada: la resposta «Placa» (un instant
+        // La càrrega del cotxe i la placa que s'hi encén a sobre 37 minuts després són una sola vegada: la resposta «Placa» (un instant
         // lluny de l'inici) no se l'emporta; la del cotxe, sí
         val llarga = Vegada(0, 0, t0, t0 + 300 * 60L, 301, 2800.0, 14.0, 0.0, 1.0)
         assertEquals(null to null, assigna(llarga, tots, refs, listOf(Etiqueta(0, t0 + 37 * 60L, t0 + 37 * 60L, 4))))

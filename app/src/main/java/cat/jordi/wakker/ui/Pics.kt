@@ -88,7 +88,7 @@ fun MomentsPunta(vm: WakkerViewModel) {
                     }
                     Column(horizontalAlignment = Alignment.End) {
                         Text("${num(a.pic.w)} W", fontSize = 15.sp, fontWeight = FontWeight.Medium, color = colorNivell(nivellPotencia(a.pic.w, limit), Color.Unspecified))
-                        if (limit != null) Text("${num(a.pic.w / (limit * 10))} %", fontSize = 11.sp, color = Suau)
+                        if (limit != null) Text("${num(a.pic.w / (limit * 10))}\u00A0%", fontSize = 11.sp, color = Suau)
                     }
                 }
             }

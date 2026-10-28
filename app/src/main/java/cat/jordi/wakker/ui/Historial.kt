@@ -258,8 +258,10 @@ private fun Comparacio(p: Periode, r: Resum) {
     Column(horizontalAlignment = Alignment.End) {
         if (abans != null && abans > 0.05) {
             val pct = ((r.total / abans - 1) * 100).roundToInt()
-            Text((if (pct > 0) "+" else "") + "$pct %", style = EstilNumero.copy(fontSize = 15.sp))
-            Text(stringResource(R.string.historial_vs, quin.replaceFirstChar { it.lowercase(Idioma.locale) }), fontSize = 10.5.sp, color = Suau)
+            Text((if (pct > 0) "+" else "") + "$pct\u00A0%", style = EstilNumero.copy(fontSize = 15.sp))
+            // El període d'ara és a mitges: es compara amb el mateix tros de l'anterior, i es diu (1.1.3)
+            val qui = quin.replaceFirstChar { it.lowercase(Idioma.locale) }
+            Text(stringResource(if (r.actual) R.string.historial_vs_altura else R.string.historial_vs, qui), fontSize = 10.5.sp, color = Suau, textAlign = TextAlign.End)
         } else {
             Text(stringResource(R.string.historial_comp_sense, quin), fontSize = 10.5.sp, color = Suau, textAlign = TextAlign.End, modifier = Modifier.width(150.dp))
         }

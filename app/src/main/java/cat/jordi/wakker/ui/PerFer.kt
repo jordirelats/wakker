@@ -97,16 +97,16 @@ fun PantallaPerFer(vm: WakkerViewModel) {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         if (!avisos.actius) {
+            // El botó a sota del text: amb la lletra gran, al costat el títol feia tres línies (1.1.3)
             Targeta(color = DesconegutFluix) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Outlined.NotificationsOff, null, tint = Desconegut, modifier = Modifier.size(20.dp))
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(Icons.Outlined.NotificationsOff, null, tint = Desconegut, modifier = Modifier.padding(top = 2.dp).size(20.dp))
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text(stringResource(R.string.entrena_avisos_titol), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Text(stringResource(R.string.perfer_avisos_text), fontSize = 12.sp, color = Suau, lineHeight = 16.sp)
+                        Button(onClick = avisos.demana, Modifier.padding(top = 6.dp)) { Text(stringResource(R.string.perfer_activa)) }
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Button(onClick = avisos.demana) { Text(stringResource(R.string.perfer_activa)) }
                 }
             }
         }
@@ -132,21 +132,18 @@ fun PantallaPerFer(vm: WakkerViewModel) {
         // Ensenyar-li tu: una estona passada (maqueta 8) o en directe
         Surface(Modifier.fillMaxWidth().padding(top = 4.dp), shape = RoundedCornerShape(16.dp), color = Fons, border = BorderStroke(1.dp, Vora)) {
             Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                Row(verticalAlignment = Alignment.Bottom) {
-                    Text(stringResource(R.string.perfer_ensenya), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(R.string.perfer_ensenya_text), fontSize = 12.sp, color = Suau)
-                }
+                Text(stringResource(R.string.perfer_ensenya), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.perfer_ensenya_text), fontSize = 12.sp, color = Suau)
                 Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { vm.oblidaEstona(); vm.pantalla = Pantalla.PASSAT }, Modifier.weight(1f), enabled = vm.aparellsAEntrenar.isNotEmpty(), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)) {
                         Icon(Icons.Outlined.History, null, Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.perfer_estona), fontSize = 12.5.sp, maxLines = 1)
+                        Text(stringResource(R.string.perfer_estona), fontSize = 12.5.sp, lineHeight = 15.sp)
                     }
                     OutlinedButton(onClick = { directe = !directe }, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)) {
                         Icon(Icons.Outlined.PowerSettingsNew, null, Modifier.size(16.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.perfer_directe), fontSize = 12.5.sp, maxLines = 1)
+                        Text(stringResource(R.string.perfer_directe), fontSize = 12.5.sp, lineHeight = 15.sp)
                     }
                 }
                 if (directe) EnDirecte(vm)

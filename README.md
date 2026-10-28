@@ -26,7 +26,7 @@ App d'Android per saber què gasta cada aparell de casa i quant costa, amb un me
   - Països Baixos: fix, normaal/dal o dinàmic.
   - Un altre país: un preu únic.
   - Cada kWh es paga al preu de la seva hora. Els costos fixos van a part.
-  - Els preus es poden omplir fent una foto o triant el PDF del contracte o de la factura. L'app els hi busca i els ensenya abans de posar-los. Provat amb un contracte holandès i amb factures d'Endesa i d'Estabanell.
+  - Els preus es poden omplir fent una foto o triant el PDF del contracte o de la factura. L'app els hi busca i els ensenya abans de posar-los. Provat amb un contracte holandès i amb factures espanyoles.
 - **Dues pinces:** la primera, la de tota la casa; la segona, una línia concreta, que es mesura per separat.
 
 ## Què cal

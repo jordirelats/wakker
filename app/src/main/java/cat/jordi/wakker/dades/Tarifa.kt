@@ -49,7 +49,7 @@ data class Tarifa(
     val potP2: Double = 0.0020,
     /** Espanya: el lloguer del comptador, €/mes sense IVA. */
     val comptadorMes: Double = 0.81,
-    /** Espanya: el finançament del bo social, €/dia sense impostos (2026: 0,024688, a Endesa i a Estabanell). */
+    /** Espanya: el finançament del bo social, €/dia sense impostos (2026: 0,024688). */
     val boSocialDia: Double = 0.024688,
     val iee: Double = 0.0511269632,
     val iva: Double = 0.21,
@@ -129,7 +129,7 @@ data class Tarifa(
 
     /** Els costos fixos d'un dia, amb impostos. Als Països Baixos poden ser negatius: el descompte supera les quotes. */
     fun fixosDia(): Double = when (pais) {
-        // El bo social porta l'impost elèctric (a la factura d'Estabanell entra a la base de l'impost); el comptador, només l'IVA
+        // El bo social porta l'impost elèctric (a les factures entra a la base de l'impost); el comptador, només l'IVA
         Pais.ES -> ambImpostosEs(potenciaKw * (potP1 + potP2) + boSocialDia) + comptadorMes * 12 / 365 * (1 + iva)
         Pais.NL -> proveidorDia + xarxaDia - descompteDia
         Pais.ALTRE -> fixosMes * 12 / 365

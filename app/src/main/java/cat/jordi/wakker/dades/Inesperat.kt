@@ -8,16 +8,20 @@ import java.time.ZoneId
  * minuts seguits. Un sol avís per episodi (s'acaba quan fa més de 15 minuts que no passa del llindar) i, com a molt,
  * un cada 2 hores. L'estat es desa entre crida i crida (a Config); la mateixa regla serveix per comptar quants avisos
  * hauria donat la setmana passada.
- * Amb la setmana real de Guíxols, 2 kW i 30 minuts haurien avisat 2 vegades (recerca/avisos/simula_apres.py).
+ * Amb una setmana real de prova, 2 kW i 30 minuts haurien avisat 2 vegades.
  */
 class DetectorInesperat(
     private val llindarW: Double, private val minuts: Int,
     var des: Long = 0, var alt: Long = 0, var avisat: Boolean = false, var darrerAvis: Long = 0,
 ) {
-    /** El residu (W) d'ara mateix; torna true si cal avisar ara. */
-    fun mira(ts: Long, residu: Double): Boolean {
+    /**
+     * El residu (W) d'ara mateix; torna true si cal avisar ara. [pausa]: quant pot passar sense mirar-ho sense que l'episodi
+     * torni a començar; minut a minut, 15 minuts; amb la lectura del treball de fons, que passa cada 15 minuts o més, més
+     * llarga (1.1.3: abans cada crida el tornava a començar i no s'avisava mai).
+     */
+    fun mira(ts: Long, residu: Double, pausa: Long = PAUSA_S): Boolean {
         if (residu >= llindarW) {
-            if (des == 0L || ts - alt > PAUSA_S) {
+            if (des == 0L || ts - alt > pausa) {
                 des = ts
                 avisat = false
             }
@@ -29,7 +33,7 @@ class DetectorInesperat(
             }
             return false
         }
-        if (des != 0L && ts - alt > PAUSA_S) {
+        if (des != 0L && ts - alt > pausa) {
             des = 0
             avisat = false
         }
@@ -46,7 +50,7 @@ class DetectorInesperat(
  * L'interval de potència d'un episodi (W per sobre del fons), per aprendre un aparell que s'engega sol i no gasta
  * sempre igual: del 10 % més baix (menys un 20 %) al màxim (més un 20 %). [exces]: minut a minut des que va
  * començar; l'episodi s'acaba quan baixa del 30 % de [dp] 3 minuts seguits. Null si dura menys de 5 minuts.
- * La bomba de calor de l'aigua de Guíxols dona 254–784 W.
+ * Una bomba de calor de l'aigua en dona, per exemple, 254–784 W.
  */
 fun intervalEpisodi(exces: List<Double>, dp: Double): Pair<Double, Double>? {
     val dins = mutableListOf<Double>()
@@ -68,7 +72,7 @@ fun intervalEpisodi(exces: List<Double>, dp: Double): Pair<Double, Double>? {
  * El compressor de la nevera, trobat sol a les dades per minut de les nits (de 0 a 6 h), quan la casa és tranquil·la:
  * la base és el mínim de l'hora que envolta cada minut; un minut és «encès» si la passa de 30 a 150 W, i els trams
  * encesos de 8 a 60 minuts són cicles. Amb 15 cicles o més d'una potència semblant (el 90 % no passa d'1,4 vegades el
- * 10 %), en torna la mediana (W); si no, null. A Guíxols: 52 W, cada ~30 minuts (recerca/avisos/cicles_nevera.py).
+ * 10 %), en torna la mediana (W); si no, null. Una nevera típica: uns 50 W, cada ~30 minuts.
  * [punts]: (s, W de la casa sense la línia de la segona pinça), minut a minut.
  */
 fun potenciaCompressor(punts: List<Pair<Long, Double>>, zona: ZoneId): Double? {

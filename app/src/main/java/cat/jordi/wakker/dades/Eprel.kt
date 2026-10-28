@@ -132,10 +132,10 @@ object Eprel {
 
 /**
  * Les maneres de buscar un model a l'EPREL (maqueta 14), de més a menys exactes: tal com s'ha escrit (sense «E-Nr.»,
- * «Mod.» o «Type» al davant); sense el que la placa hi afegeix al final («3VS6364IA/01» → «3VS6364IA»); i escurçant-lo
+ * «Mod.» o «Type» al davant); sense el que la placa hi afegeix al final («4SX7251KB/02» → «4SX7251KB»); i escurçant-lo
  * d'una lletra en una, fins a 5 lletres i com a molt 4 cops. L'EPREL busca els models que contenen el que s'escriu i els
- * espais no hi compten (comprovat el 27/10: «3VS 6364 IA» i «GMJ96» troben; «3VS6364IA/01» no troba res; «3VS636» troba
- * els 5 Balay de la família). [exactes]: quantes de les primeres no estan escurçades.
+ * espais no hi compten (comprovat: un model amb espais o només amb el principi troba; amb el «/02» de la placa no troba res;
+ * escurçat, surten els de la mateixa família). [exactes]: quantes de les primeres no estan escurçades.
  */
 data class VariantsModel(val models: List<String>, val exactes: Int)
 

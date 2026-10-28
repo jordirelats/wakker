@@ -63,7 +63,7 @@ object Avisos {
     )
 
     /** La potència ha passat del 90 % de la contractada ([limitKw]). [ences]: els aparells que l'expliquen, si se'n sap cap. */
-    fun avisaPotencia(context: Context, w: Double, limitKw: Double, ences: List<Pair<String, Double>> = emptyList()) {
+    fun avisaPotencia(context: Context, w: Double, limitKw: Double, ences: List<Pair<String, Double>> = emptyList(), callat: Boolean = false) {
         val gestor = NotificationManagerCompat.from(context)
         if (!gestor.areNotificationsEnabled()) return
         val watts = NumberFormat.getIntegerInstance(Idioma.locale).format(w)
@@ -84,6 +84,8 @@ object Avisos {
             .setTimeoutAfter(15 * 60_000L)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            // Posar al dia la que ja hi és (amb el que hi ha encès, després de sincronitzar) no torna a sonar
+            .setOnlyAlertOnce(callat)
             .build()
         try {
             gestor.notify(ID_POTENCIA, n)

@@ -80,11 +80,18 @@ fun PantallaAparells(vm: WakkerViewModel) {
             }
         } else {
             val mesurats = r?.aparells.orEmpty()
-            if (mesurats.isNotEmpty()) Targeta {
-                val maxim = mesurats.first().kwh.coerceAtLeast(0.001)
-                mesurats.forEachIndexed { i, f ->
+            // Els que l'app ja coneix però aquest mes encara no han funcionat (el dia 1, el cotxe après), a la llista, a 0
+            // kWh: abans passaven a «sense mesurar» (1.1.3)
+            val idsMes = mesurats.mapNotNull { it.aparell?.id }.toSet()
+            val coneguts = vm.aparells.filter {
+                it.funciona != Funcionament.SEMPRE && it.id !in idsMes && (vm.referencies[it.id] != null || vm.referenciesLinia[it.id] != null)
+            }.map { FilaRanquing(it, it.nom, 0.0, 0.0, 0, 0, vm.config.teLinia && it.linia) }
+            val llista = mesurats + coneguts
+            if (llista.isNotEmpty()) Targeta {
+                val maxim = (mesurats.firstOrNull()?.kwh ?: 0.0).coerceAtLeast(0.001)
+                llista.forEachIndexed { i, f ->
                     if (i > 0) Ratlla()
-                    FilaAparell(vm, f, f.kwh / maxim, nomLinia)
+                    FilaAparell(vm, f, f.kwh / maxim, nomLinia, encaraNo = f in coneguts)
                 }
             }
             // Els sempre encesos van dins del que la casa gasta sempre
@@ -96,13 +103,17 @@ fun PantallaAparells(vm: WakkerViewModel) {
                     }
                 }
             }
-            val ambConsum = mesurats.mapNotNull { it.aparell?.id }.toSet()
+            val ambConsum = llista.mapNotNull { it.aparell?.id }.toSet()
             // Un aparell que es diu com la línia és la línia mateixa: si gasta, ja surt a dalt
             val senseMesurar = vm.aparells.filter {
                 it.funciona != Funcionament.SEMPRE && it.id !in ambConsum && !(vm.config.teLinia && it.nom.equals(nomLinia, ignoreCase = true))
             }
             if (senseMesurar.isNotEmpty()) {
-                Plegat(Icons.Outlined.GridView, pluralStringResource(R.plurals.aparells_n_sense_mesurar, senseMesurar.size, senseMesurar.size)) {
+                // Obert si s'hi acaba d'afegir un aparell: si no, en tornar d'Afegir no es veia (1.1.3)
+                Plegat(
+                    Icons.Outlined.GridView, pluralStringResource(R.plurals.aparells_n_sense_mesurar, senseMesurar.size, senseMesurar.size),
+                    obertDeEntrada = senseMesurar.any { it.nom == vm.darrerAfegit },
+                ) {
                     Nota(stringResource(R.string.aparells_sense_mesurar_nota), Modifier.padding(bottom = 4.dp))
                     senseMesurar.forEach { a ->
                         FilaPetita(
@@ -130,7 +141,7 @@ private fun aprenent(vm: WakkerViewModel, f: FilaRanquing): Boolean {
 }
 
 @Composable
-private fun FilaAparell(vm: WakkerViewModel, f: FilaRanquing, part: Double, nomLinia: String) {
+private fun FilaAparell(vm: WakkerViewModel, f: FilaRanquing, part: Double, nomLinia: String, encaraNo: Boolean = false) {
     Row(
         Modifier.fillMaxWidth().then(if (f.aparell != null) Modifier.clickable { vm.obreAparell(f.aparell) } else Modifier).padding(vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -139,10 +150,11 @@ private fun FilaAparell(vm: WakkerViewModel, f: FilaRanquing, part: Double, nomL
         Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(f.nom.ifBlank { nomLinia }, Modifier.weight(1f, fill = false), fontSize = 13.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(f.nom.ifBlank { nomLinia }, Modifier.weight(1f, fill = false), fontSize = 13.5.sp, fontWeight = FontWeight.Medium, maxLines = 2, lineHeight = 17.sp, overflow = TextOverflow.Ellipsis)
                 if (f.linia) Etiqueta(nomLinia.ifBlank { stringResource(R.string.pinca2_xip) })
             }
-            if (aprenent(vm, f)) ParaulaAmbre(stringResource(R.string.aparells_nou))
+            if (encaraNo) Text(stringResource(R.string.aparells_mes_encara_no), fontSize = 10.5.sp, color = Suau)
+            else if (aprenent(vm, f)) ParaulaAmbre(stringResource(R.string.aparells_nou))
             Spacer(Modifier.height(4.dp))
             BarraPart(part)
         }
@@ -156,8 +168,8 @@ private fun FilaAparell(vm: WakkerViewModel, f: FilaRanquing, part: Double, nomL
 
 /** Una targeta plegada: una icona, un text i la fletxa; tocant-la s'obre el que hi ha a dins. */
 @Composable
-private fun Plegat(icona: ImageVector, text: String, contingut: @Composable () -> Unit) {
-    var obert by rememberSaveable { mutableStateOf(false) }
+private fun Plegat(icona: ImageVector, text: String, obertDeEntrada: Boolean = false, contingut: @Composable () -> Unit) {
+    var obert by rememberSaveable(obertDeEntrada) { mutableStateOf(obertDeEntrada) }
     Targeta {
         Row(Modifier.fillMaxWidth().clickable { obert = !obert }, verticalAlignment = Alignment.CenterVertically) {
             Cercle(icona, EstatIcona.NEUTRE, 28.dp)

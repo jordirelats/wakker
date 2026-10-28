@@ -105,6 +105,22 @@ object Actualitzacio {
         return false
     }
 
+    /** Que un APK baixat sigui d'aquesta app (el mateix paquet) i signat amb el mateix certificat (1.1.3). */
+    @Suppress("DEPRECATION")
+    fun esNostre(context: Context, apk: File): Boolean = runCatching {
+        val pm = context.packageManager
+        val flags = if (android.os.Build.VERSION.SDK_INT >= 28) android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES else android.content.pm.PackageManager.GET_SIGNATURES
+        val nou = pm.getPackageArchiveInfo(apk.path, flags) ?: return false
+        if (nou.packageName != context.packageName) return false
+        val ara = pm.getPackageInfo(context.packageName, flags)
+        fun signatures(i: android.content.pm.PackageInfo) =
+            (if (android.os.Build.VERSION.SDK_INT >= 28) i.signingInfo?.apkContentsSigners else i.signatures)?.map { it.toCharsString() }?.toSet().orEmpty()
+        // Si Android no en dona la signatura (alguns ho fan amb un fitxer), el paquet ja n'hi ha prou: una altra signatura del
+        // mateix paquet, l'instal·lador ja la rebutja
+        val s = signatures(nou)
+        s.isEmpty() || s == signatures(ara)
+    }.getOrDefault(false)
+
     fun installa(context: Context, apk: File) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fitxers", apk)
         context.startActivity(

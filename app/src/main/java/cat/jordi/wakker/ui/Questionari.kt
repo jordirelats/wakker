@@ -2,6 +2,7 @@
 
 package cat.jordi.wakker.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -153,6 +154,8 @@ private val NOMS_PLACA = mapOf(
 fun PantallaQuestionari(vm: WakkerViewModel) {
     val context = LocalContext.current
     var pas by rememberSaveable { mutableIntStateOf(0) }
+    // Enrere torna a l'estança d'abans, i no perd les respostes (1.1.3)
+    BackHandler(enabled = pas > 0) { pas-- }
     // La clau és "estança|pregunta|opció", amb els ids dels textos. Es desen les marcades, per si es gira la pantalla
     val triat = rememberSaveable(
         saver = listSaver(save = { m -> m.filterValues { it }.keys.toList() }, restore = { l -> mutableStateMapOf(*l.map { it to true }.toTypedArray()) }),

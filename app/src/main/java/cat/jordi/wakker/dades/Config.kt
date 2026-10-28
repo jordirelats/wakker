@@ -19,6 +19,15 @@ class Config(context: Context) {
         get() = text("id")
         set(v) = desa("id", v)
 
+    /**
+     * La MAC del Shelly de casa, en minúscules (1.1.3). Si a l'adreça de casa hi respon un altre aparell (el router li ha
+     * donat l'adreça), no se'n fan servir les dades. Es desa en provar el Shelly a la Connexió; buida, s'aprèn a la primera
+     * lectura.
+     */
+    var macShelly: String
+        get() = text("mac_shelly")
+        set(v) = desa("mac_shelly", v)
+
     var model: String
         get() = text("model")
         set(v) = desa("model", v)
@@ -51,28 +60,20 @@ class Config(context: Context) {
     /** Totes les preferències, per a la còpia de seguretat. */
     fun totes(): Map<String, Any?> = p.all
 
-    /** Posa totes les preferències d'una còpia en lloc de les d'ara, i oblida la tarifa llegida. */
-    fun posaTotes(valors: Map<String, Any>) {
-        p.edit().clear().apply {
-            for ((clau, v) in valors) {
-                when (v) {
-                    is String -> putString(clau, v)
-                    is Boolean -> putBoolean(clau, v)
-                    is Int -> putInt(clau, v)
-                    is Long -> putLong(clau, v)
-                    is Float -> putFloat(clau, v)
-                }
-            }
-        }.commit()
-        synchronized(this) {
-            tarifaText = null
-            tarifaLlegida = null
-        }
+    /**
+     * Després de tornar a obrir l'app amb una còpia restaurada (1.1.3): la data de la còpia, o "" si no s'ha pogut; null si no
+     * n'hi havia cap. Es llegeix un sol cop.
+     */
+    fun prenCopiaRestaurada(): String? {
+        if (!p.contains(Copia.CLAU_RESTAURADA)) return null
+        val v = p.getString(Copia.CLAU_RESTAURADA, "") ?: ""
+        p.edit().remove(Copia.CLAU_RESTAURADA).apply()
+        return v
     }
 
     /**
      * Els avisos de consum inesperat: si n'hi ha, a partir de quants W sense explicar i durant quants minuts. Fins a la
-     * 0.19 eren 300 W durant 10 minuts, fixos, i saltaven massa (24 vegades en una setmana a Guíxols).
+     * 0.19 eren 300 W durant 10 minuts, fixos, i saltaven massa (desenes de vegades en una setmana).
      */
     var avisInesperat: Boolean
         get() = p.getBoolean("avis_inesperat", true)
@@ -91,6 +92,11 @@ class Config(context: Context) {
     var darrerAvisInesperat: Long
         get() = p.getLong("darrer_avis_inesperat", 0)
         set(v) = p.edit().putLong("darrer_avis_inesperat", v).apply()
+
+    /** Fins on s'ha mirat el consum inesperat (s): el treball de fons continua des d'aquí amb els minuts del Shelly (1.1.3). */
+    var inesperatMirat: Long
+        get() = p.getLong("inesperat_mirat", 0)
+        set(v) = p.edit().putLong("inesperat_mirat", v).apply()
 
     /**
      * Omplir el que falta amb el consum per hores del núvol (maqueta 11): les absències de més de 7 dies i el d'abans

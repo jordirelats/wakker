@@ -750,7 +750,7 @@
     <string name="ara_sembla_ell_des_de">%1$s · aan het vermogen te zien is hij het</string>
     <string name="ara_a_la_pinca">meetklem 2 · %1$s</string>
     <string name="ara_acaba_encendre_no_se">net aangezet · ik weet nog niet wat het is</string>
-    <string name="ara_no_se_que_es">%1$s · ik weet niet wat het is: zeg het bij «Te doen»</string>
+    <string name="ara_no_se_que_es">%1$s · ik weet niet wat het is: tik erop om het te zeggen</string>
     <string name="ara_nomes_potencia">Van buitenaf ziet de app alleen het totale vermogen, en wat hij zegt is op basis van het vermogen. Thuis, met het detail van elke minuut, weet hij het zeker.</string>
     <string name="sense_nom_quan">%1$s · %2$s</string>
     <string name="sense_nom_detall">%1$s · %2$s kW</string>
@@ -773,8 +773,8 @@
     <string name="espera_sense_nom">Nog zonder naam: %1$s W.</string>
     <string name="espera_no_ho_saps">onbekend</string>
     <string name="espera_que_has_apagat">Wat heb je uitgezet?</string>
-    <string name="resum_sense_nom">%1$s %% heeft nog geen naam: bij «Te doen» zeg je het met één tik.</string>
-    <string name="resum_sempre">Altijd aan is %1$s %% ervan: spoor het op.</string>
+    <string name="resum_sense_nom">%1$s %% heeft nog geen naam: bij «Te doen» zeg je het met één tik.</string>
+    <string name="resum_sempre">Altijd aan is %1$s %% ervan: spoor het op.</string>
     <string name="resum_d_acord">Oké</string>
     <string name="avis_canal_resum">Weekoverzicht</string>
     <string name="avis_canal_resum_descripcio">Op maandag het verbruik van vorige week.</string>
@@ -882,8 +882,8 @@
     <string name="config_shelly_a">Shelly %1$s</string>
     <string name="config_nomes_nuvol">alleen via de cloud</string>
     <string name="config_nuvol_ok">cloud</string>
-    <string name="config_avis_90_al_moment" formatted="false">90 % direct</string>
-    <string name="config_avis_90_cada15" formatted="false">90 % elke 15 min</string>
+    <string name="config_avis_90_al_moment" formatted="false">90 % direct</string>
+    <string name="config_avis_90_cada15" formatted="false">90 % elke 15 min</string>
     <string name="config_inesperat_valor">%1$s kW, %2$s</string>
     <string name="config_avisos_apagats">uit</string>
     <string name="config_nuvol_hores_si">cloud per uur ✓</string>
@@ -892,7 +892,7 @@
     <string name="config_versio">versie %1$s</string>
     <string name="config_versio_nova_curt">er is %1$s</string>
     <string name="connecta_nuvol_opcional">Optioneel</string>
-    <string name="connecta_avisa_90_sota">van %1$s kW · oranje vanaf 80 %%</string>
+    <string name="connecta_avisa_90_sota">van %1$s kW · oranje vanaf 80 %%</string>
     <string name="connecta_sense_potencia">vul het gecontracteerde vermogen in bij «Prijs en vermogen»</string>
     <string name="connecta_quan_gasti">Als het meer verbruikt dan</string>
     <string name="connecta_resum_dilluns">Op maandag een melding</string>
@@ -1005,7 +1005,7 @@
 
     <!-- La còpia de seguretat i el pas a Wakker (1.0.2) -->
     <string name="copia_titol">Back-up</string>
-    <string name="copia_text">De database en de instellingen in één bestand: om van telefoon te wisselen, of om over te stappen op Wakker.</string>
+    <string name="copia_text">De database en de instellingen in één bestand, om van telefoon te wisselen. Er zit ook de Shelly-cloudsleutel in: bewaar het op een privéplek.</string>
     <string name="copia_desa">Back-up maken</string>
     <string name="copia_desa_text">in Downloads, Drive, waar je wilt</string>
     <string name="copia_restaura">Back-up terugzetten</string>
@@ -1017,8 +1017,39 @@
     <string name="copia_no_valida">Dit bestand is geen back-up van Wakker (of van Consum, de vorige naam).</string>
     <string name="copia_massa_nova">De back-up is van een nieuwere versie van de app: werk de app eerst bij.</string>
     <string name="copia_primera">Heb je een back-up? Zet die terug</string>
-    <string name="copia_restaurant">Back-up wordt teruggezet…</string>
+    <string name="copia_restaurant">Back-up wordt gecontroleerd… De app start opnieuw.</string>
     <string name="copia_desant">Back-up wordt opgeslagen…</string>
     <string name="config_copia">back-up</string>
     <string name="giny_de_les">van %1$s</string>
+
+    <!-- La revisió des de quatre punts de vista (1.1.3) -->
+    <string name="vm_actualitzacio_no_nostra">Het gedownloade bestand is niet van Wakker: het is niet geïnstalleerd.</string>
+    <string name="ara_no_arribo_shelly">Ik bereik de Shelly niet: controleer het adres bij Instellingen</string>
+    <string name="aparells_mes_encara_no">deze maand nog niet</string>
+    <string name="passat_futura">Deze periode is nog niet voorbij.</string>
+    <string name="historial_vs_altura">t.o.v. %1$s op hetzelfde moment</string>
+    <string name="credits_nom_shelly">Shelly</string>
+    <string name="credits_de_shelly">Allterco Robotics</string>
+    <string name="credits_nom_eprel">EPREL</string>
+    <string name="credits_de_eprel">Europese Commissie</string>
+    <string name="credits_nom_energyzero">EnergyZero</string>
+    <string name="credits_de_energyzero">EnergyZero B.V.</string>
+    <string name="credits_nom_ree">Red Eléctrica (REData)</string>
+    <string name="credits_de_ree">Red Eléctrica de España</string>
+    <string name="credits_nom_inter">Inter</string>
+    <string name="credits_de_inter">Rasmus Andersson</string>
+    <string name="credits_nom_tesseract">Tesseract OCR en Tesseract4Android</string>
+    <string name="credits_de_tesseract">Google, HP en Adaptech</string>
+    <string name="credits_nom_zxing">ZXing Android Embedded</string>
+    <string name="credits_de_zxing">JourneyApps en het ZXing-project</string>
+    <string name="credits_nom_compose">Jetpack Compose, AndroidX en Material 3</string>
+    <string name="credits_de_compose">Google</string>
+    <string name="credits_nom_kotlin">Kotlin en kotlinx.coroutines</string>
+    <string name="credits_de_kotlin">JetBrains</string>
+
+    <!-- 1.1.3: a l'adreça del Shelly de casa hi respon un altre aparell (el router li ha donat l'adreça) -->
+    <string name="ara_altre_shelly">Op het adres van de Shelly antwoordt een ander apparaat: controleer het bij Instellingen</string>
+    <string name="vm_altre_shelly">Op het adres van de Shelly zit een andere Shelly: ik haal er geen gegevens op</string>
+    <!-- A la Connexió, després de «Prova»: el Shelly trobat no és el que hi havia -->
+    <string name="connecta_shelly_diferent">Dit is niet de Shelly van eerst. Als je hem opslaat, komen de nieuwe gegevens van deze.</string>
 </resources>

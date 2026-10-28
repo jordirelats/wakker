@@ -30,6 +30,8 @@ class WakkerApp : Application() {
     override fun onCreate() {
         super.onCreate()
         Idioma.actualitza(this)
+        // Una còpia de seguretat a punt per restaurar: abans d'obrir la base de dades (1.1.3)
+        cat.jordi.wakker.dades.Copia.aplicaPendent(this)
         repo = Repositori(Config(this), BaseDades(this))
         Avisos.creaCanal(this)
         programaSincronitzacio(this)
@@ -54,6 +56,8 @@ class Sincronitza(context: Context, params: WorkerParameters) : CoroutineWorker(
         val repo = (applicationContext as WakkerApp).repo
         if (repo.config.configurat) {
             runCatching { repo.sincronitza() }
+            // Si WorkManager l'ha aturat (el temps s'ha acabat), no continua (1.1.3)
+            if (isStopped) return Result.success()
             // Qui només té el núvol no sincronitza: el resum per hores de les dades velles, aquí
             runCatching { repo.resumeixVells() }
             runCatching {
@@ -64,8 +68,8 @@ class Sincronitza(context: Context, params: WorkerParameters) : CoroutineWorker(
                         Avisos.avisaPotencia(applicationContext, l.total.w, limit, runCatching { repo.encesAra(l) }.getOrDefault(emptyList()))
                     }
                     val resta = l.total.w - (if (repo.config.teLinia) (l.linia?.w ?: 0.0).coerceAtLeast(0.0) else 0.0)
-                    // Amb l'app oberta ja ho mira ella, cada minut
-                    if (!WakkerApp.oberta) repo.comprovaInesperat(resta)?.let { p ->
+                    // Amb l'app oberta ja ho mira ella, cada minut; si no, amb els minuts que ha portat la sincronització
+                    if (!WakkerApp.oberta) repo.comprovaInesperatDeFons(resta)?.let { p ->
                         Avisos.avisa(applicationContext, p, repo.aparellsAEntrenar(), repo.referencies())
                     }
                     // El giny de la pantalla d'inici, a part: si falla, els avisos ja s'han mirat
@@ -73,6 +77,7 @@ class Sincronitza(context: Context, params: WorkerParameters) : CoroutineWorker(
                 }
             }
         }
+        if (isStopped) return Result.success()
         runCatching { repo.actualitzaPreus() }
         // El dilluns, el resum de la setmana passada (maqueta 15)
         runCatching { Avisos.miraResum(applicationContext, repo) }

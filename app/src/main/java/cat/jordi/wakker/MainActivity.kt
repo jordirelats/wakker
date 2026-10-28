@@ -103,6 +103,12 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             obre(intent)
             rep(intent)
+            // Si l'app s'acaba de tornar a obrir per restaurar una còpia (1.1.3)
+            vm.config.prenCopiaRestaurada()?.let { data ->
+                // La data de la còpia com a la resta de l'app («28 d'octubre»)
+                val dia = runCatching { java.time.LocalDate.parse(data).format(java.time.format.DateTimeFormatter.ofPattern(getString(R.string.format_dia_mes), Idioma.locale)) }.getOrDefault(data)
+                Toast.makeText(this, if (data.isNotEmpty()) getString(R.string.copia_restaurada, dia) else getString(R.string.copia_error, getString(R.string.copia_no_valida)), Toast.LENGTH_LONG).show()
+            }
         }
         setContent {
             // Clara o fosca (maqueta 16): com el mòbil, o el que s'hagi triat a la Configuració
@@ -223,7 +229,7 @@ private fun Arrel(vm: WakkerViewModel) {
                 title = {
                     // A l'Historial, el període va a la barra de dalt (maqueta 18)
                     if (principal && vm.pestanya == Pestanya.HISTORIAL) {
-                        Box(Modifier.padding(end = 8.dp)) { Pestanyes(Periode.entries, vm.periode, { stringResource(it.nomId) }, vm::triaPeriode) }
+                        Box(Modifier.padding(end = 12.dp)) { Pestanyes(Periode.entries, vm.periode, { stringResource(it.nomId) }, linies = 1, enTriar = vm::triaPeriode) }
                     } else {
                         Text(titol, fontSize = 21.sp, fontWeight = FontWeight.SemiBold, letterSpacing = (-0.01).em, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
@@ -249,7 +255,11 @@ private fun Arrel(vm: WakkerViewModel) {
                                 IconButton(onClick = vm::sincronitza) { Icon(Icons.Outlined.Sync, stringResource(R.string.principal_recull_dades)) }
                             }
                         }
-                        IconButton(onClick = { vm.seccioConfig = null; vm.pantalla = Pantalla.CONNECTA }) { Icon(Icons.Outlined.Settings, stringResource(R.string.principal_configuracio)) }
+                        // A l'Historial, el període ocupa la barra: amb la lletra gran «Setmana» no hi cabria (1.1.3). La Configuració
+                        // és a les altres pestanyes
+                        if (vm.pestanya != Pestanya.HISTORIAL) {
+                            IconButton(onClick = { vm.seccioConfig = null; vm.pantalla = Pantalla.CONNECTA }) { Icon(Icons.Outlined.Settings, stringResource(R.string.principal_configuracio)) }
+                        }
                     }
                 },
             )
@@ -282,7 +292,7 @@ private fun Arrel(vm: WakkerViewModel) {
                                 }
                                 // El globus de «Per fer»: quantes coses hi ha per contestar (maqueta 18)
                                 if (p == Pestanya.PER_FER && pendents > 0) {
-                                    BadgedBox(badge = { Badge(containerColor = Desconegut, contentColor = androidx.compose.ui.graphics.Color.White) { Text("$pendents") } }) { Icon(icona, null) }
+                                    BadgedBox(badge = { Badge(containerColor = Desconegut, contentColor = if (Aspecte.fosc) androidx.compose.ui.graphics.Color(0xFF1C2421) else androidx.compose.ui.graphics.Color.White) { Text("$pendents") } }) { Icon(icona, null) }
                                 } else {
                                     Icon(icona, null)
                                 }

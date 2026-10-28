@@ -22,8 +22,8 @@ data class TramPassat(
 
 /**
  * Ensenyar un aparell amb una estona passada (maqueta 8): «el rentaplats va funcionar diumenge de 17 a 21 h». L'app hi
- * busca els trams i l'usuari marca els que eren l'aparell. Amb el rentaplats de Guíxols del 25/10, de 17 a 21 h: dos
- * trams de 2,2 kW (l'escalfament) i un de 0,3 kW (recerca/entrena_passat/prova_passat.py).
+ * busca els trams i l'usuari marca els que eren l'aparell. Amb un rentaplats de veritat: dos
+ * trams de 2,2 kW (l'escalfament) i un de 0,3 kW.
  */
 object EstonaPassada {
     /** El que ha de passar de la base un minut perquè compti (W). */

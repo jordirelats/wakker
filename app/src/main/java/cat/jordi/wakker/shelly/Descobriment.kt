@@ -40,7 +40,9 @@ fun descobreix(context: Context, actual: String, enTrobar: (Trobat) -> Unit): ()
     val feina = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     feina.launch {
         val ja = actual.takeIf { it.isNotBlank() }?.let(::shellyA)
-        if (ja != null) troba(ja) else escaneja(context, troba)
+        // Amb un Shelly configurat que no respon, només s'escaneja si és a la xarxa d'ara (ha canviat d'adreça a casa): fora
+        // de casa, a la wifi de la feina o d'un hotel, no es pregunta a mil adreces d'una xarxa aliena (1.1.3)
+        if (ja != null) troba(ja) else escaneja(context, troba, nomesSiHiEs = actual.substringBefore(':').takeIf { it.isNotBlank() })
     }
     return {
         atura()
@@ -97,14 +99,16 @@ private fun mdns(context: Context, enTrobar: (Trobat) -> Unit): () -> Unit {
  * Pregunta a les adreces de la wifi del mòbil si són un Shelly: /shelly, i després, si té mesura d'energia (em1:0
  * a Shelly.GetStatus). Amb 48 preguntes alhora, una /24 (254 adreces) es mira en pocs segons.
  */
-private suspend fun escaneja(context: Context, enTrobar: (Trobat) -> Unit) {
+private suspend fun escaneja(context: Context, enTrobar: (Trobat) -> Unit, nomesSiHiEs: String? = null) {
     val cm = context.getSystemService(ConnectivityManager::class.java)
     val xarxa = cm.activeNetwork ?: return
     if (cm.getNetworkCapabilities(xarxa)?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) != true) return
     val enllac = cm.getLinkProperties(xarxa)?.linkAddresses?.firstOrNull { it.address is Inet4Address } ?: return
+    val adreces = adrecesAMirar(enllac.address.address, enllac.prefixLength)
+    if (nomesSiHiEs != null && nomesSiHiEs !in adreces) return
     val alhora = Semaphore(48)
     coroutineScope {
-        for (ip in adrecesAMirar(enllac.address.address, enllac.prefixLength)) {
+        for (ip in adreces) {
             launch { alhora.withPermit { shellyA(ip)?.let(enTrobar) } }
         }
     }
@@ -139,13 +143,28 @@ private fun shellyA(ip: String): Trobat? {
     return Trobat(nom, ip)
 }
 
+/** Com a molt [max] bytes d'una resposta: un aparell que no l'acaba no pot omplir la memòria (1.1.3). */
+internal fun llegeixFins(entrada: java.io.InputStream, max: Int): String {
+    val sortida = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(8192)
+    entrada.use {
+        while (true) {
+            val n = it.read(buffer)
+            if (n < 0) break
+            sortida.write(buffer, 0, n)
+            if (sortida.size() > max) throw java.io.IOException("resposta massa gran")
+        }
+    }
+    return sortida.toString(Charsets.UTF_8.name())
+}
+
 private fun llegeixUrl(url: String, tempsMs: Int): String {
     val c = URL(url).openConnection() as HttpURLConnection
     c.connectTimeout = tempsMs
     c.readTimeout = tempsMs
     try {
         if (c.responseCode !in 200..299) throw IllegalStateException("HTTP ${c.responseCode}")
-        return c.inputStream.bufferedReader().readText()
+        return llegeixFins(c.inputStream, 256 * 1024)
     } finally {
         c.disconnect()
     }

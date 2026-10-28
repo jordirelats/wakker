@@ -1,5 +1,6 @@
 package cat.jordi.wakker.ui
 
+import cat.jordi.wakker.dades.Copia
 import cat.jordi.wakker.dades.ErrorUsuari
 import cat.jordi.wakker.dades.TipusExport
 import cat.jordi.wakker.dades.PeriodeExport
@@ -128,6 +129,10 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         private set
     var avuiKwh by mutableStateOf(0.0)
         private set
+
+    /** Si ja s'ha fet el primer refresc: abans, «Avui» diu «—» en lloc de 0,00 kWh (1.1.3). */
+    var carregat by mutableStateOf(false)
+        private set
     var avuiEuros by mutableStateOf(0.0)
         private set
 
@@ -171,6 +176,10 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
     var sincronitzant by mutableStateOf(false)
         private set
     var errorSincronitzacio by mutableStateOf<TextRecurs?>(null)
+        private set
+
+    /** La MAC de l'altre aparell que respon a l'adreça del Shelly de casa (1.1.3), o null. */
+    var altreShelly by mutableStateOf<String?>(null)
         private set
 
     // ---------- Entrenament ----------
@@ -282,10 +291,22 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
                 runCatching { Actualitzacio.baixa(context, v) { p -> viewModelScope.launch { progresActualitzacio = p } } }
             }
             progresActualitzacio = null
-            r.onSuccess { Actualitzacio.installa(context, it) }
-                .onFailure { missatgeActualitzacio = TextRecurs(R.string.vm_no_s_ha_pogut_baixar, it.missatge(context).orEmpty()) }
+            r.onSuccess { apk ->
+                // Que l'APK sigui d'aquesta app i amb la mateixa signatura (1.1.3); Android ja rebutja una altra signatura del
+                // mateix paquet, però no un altre paquet que es digui igual
+                if (!Actualitzacio.esNostre(context, apk)) {
+                    apk.delete()
+                    missatgeActualitzacio = TextRecurs(R.string.vm_actualitzacio_no_nostra)
+                    return@onSuccess
+                }
+                // Des de segon pla, Android no deixa obrir l'instal·lador: s'obre en tornar a l'app
+                if (WakkerApp.oberta) Actualitzacio.installa(context, apk) else apkPendent = apk
+            }.onFailure { missatgeActualitzacio = TextRecurs(R.string.vm_no_s_ha_pogut_baixar, it.missatge(context).orEmpty()) }
         }
     }
+
+    /** Un APK baixat amb l'app en segon pla: l'instal·lador s'obre en tornar-hi. */
+    private var apkPendent: java.io.File? = null
 
     // ---------- La còpia de seguretat (1.0.2) ----------
     var copiant by mutableStateOf(false)
@@ -310,6 +331,10 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
     }
 
     /** Restaura una còpia en lloc del que hi ha, i torna a començar com si s'acabés d'obrir l'app. */
+    /**
+     * Restaura una còpia (1.1.3): es comprova i es deixa a punt, i l'app es torna a obrir per posar-la en lloc del que hi ha
+     * abans d'obrir la base de dades. Si l'usuari ha sortit de l'app mentrestant, es fa en tornar-hi ([enPrimerPla]).
+     */
     fun restauraCopia(uri: Uri) {
         val context = getApplication<Application>()
         viewModelScope.launch {
@@ -317,34 +342,29 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
             missatgeCopia = TextRecurs(R.string.copia_restaurant)
             val r = withContext(Dispatchers.IO) {
                 runCatching {
-                    (context.contentResolver.openInputStream(uri) ?: throw ErrorUsuari(R.string.exporta_error)).use { repo.restauraCopia(context, it) }
+                    (context.contentResolver.openInputStream(uri) ?: throw ErrorUsuari(R.string.exporta_error)).use { repo.preparaRestauracio(context, it) }
                 }
             }
             copiant = false
-            r.onSuccess { m ->
-                missatgeCopia = TextRecurs(R.string.copia_restaurada, m.data)
-                lectura = null
-                haLlegit = false
-                resumCalculat = 0
-                aspecte = config.aspecte
-                Vigilancia.actualitza(context)
-                if (config.configurat) {
-                    pantalla = Pantalla.PRINCIPAL
-                    pestanya = Pestanya.ARA
-                }
-                enPrimerPla(true)
-            }.onFailure { missatgeCopia = TextRecurs(R.string.copia_error, it.missatge(context).orEmpty()) }
+            r.onSuccess { if (WakkerApp.oberta) Copia.reinicia(context) }
+                .onFailure { missatgeCopia = TextRecurs(R.string.copia_error, it.missatge(context).orEmpty()) }
         }
     }
 
     /** Només es llegeix en directe mentre l'app és a la pantalla. */
     fun enPrimerPla(si: Boolean) {
+        // Una còpia que s'ha acabat de preparar amb l'app en segon pla: ara que torna a ser a la pantalla, es posa
+        if (si && Copia.pendent(getApplication())) {
+            Copia.reinicia(getApplication())
+            return
+        }
         bucles?.cancel()
         bucles = null
         WakkerApp.oberta = si
         if (si && (lectura?.ts ?: 0) < System.currentTimeMillis() / 1000 - 60) lectura = null
         // Amb l'app oberta, Android deixa engegar la vigilància; si cal, continuarà amb l'app tancada
         if (si) Vigilancia.actualitza(getApplication())
+        if (si) apkPendent?.let { apkPendent = null; if (it.exists()) Actualitzacio.installa(getApplication(), it) }
         if (si) comprovaVersio(forcat = false)
         // El que falta, amb el núvol per hores (maqueta 11), com a molt un cop per hora
         if (si && config.nuvolHores && config.teNuvol && System.currentTimeMillis() / 1000 - config.nuvolDarrer > 3600) omplNuvol()
@@ -355,6 +375,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
                 while (isActive) {
                     val l = repo.lectura()
                     lectura = l
+                    altreShelly = repo.altreShelly
                     haLlegit = true
                     if (l != null) {
                         val ara = System.currentTimeMillis()
@@ -389,21 +410,30 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
     private suspend fun sincronitzaAra() {
         enCurs++
         sincronitzant = true
-        errorSincronitzacio = try {
-            repo.sincronitza()
-            null
-        } catch (e: CancellationException) {
+        // Amb try/finally, perquè la roda de dalt no es quedi girant si la cancel·lació arriba en qualsevol punt (1.1.3)
+        try {
+            errorSincronitzacio = try {
+                repo.sincronitza()
+                null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: ErrorUsuari) {
+                e.recurs
+            } catch (_: Exception) {
+                TextRecurs(R.string.vm_error_sincronitzacio)
+            }
+            try {
+                repo.actualitzaPreus()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+            val l = lectura
+            withContext(Dispatchers.IO) { runCatching { Ginys.actualitza(getApplication(), repo, l) } }
+        } finally {
             enCurs--
             sincronitzant = enCurs > 0
-            throw e
-        } catch (_: Exception) {
-            TextRecurs(R.string.vm_error_sincronitzacio)
         }
-        runCatching { repo.actualitzaPreus() }
-        val l = lectura
-        withContext(Dispatchers.IO) { runCatching { Ginys.actualitza(getApplication(), repo, l) } }
-        enCurs--
-        sincronitzant = enCurs > 0
         refrescaAra()
     }
 
@@ -424,7 +454,8 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
             }
             // El giny de la pantalla d'inici, cada minut mentre l'app és oberta
             runCatching { Ginys.actualitza(getApplication(), repo, l) }
-            repo.obertes()
+            // Si la base de dades falla, la pantalla es queda com era en lloc de tancar l'app (1.1.3)
+            runCatching { repo.obertes() }.getOrDefault(obertes)
         }
     }
 
@@ -436,7 +467,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         val p = periode
         val d = diaHistorial
         val generacio = generacioTarifa
-        val dades = withContext(Dispatchers.IO) {
+        val dades = try { withContext(Dispatchers.IO) {
             // Si s'ha ensenyat, respost o canviat alguna cosa, de qui és cada vegada (maqueta 13)
             repo.reassignaVegades()
             Dades(
@@ -449,8 +480,15 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
                 resumDeLaSetmana(),
                 repo.aparellsLinia(),
             )
+        } } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Una base de dades que falla no ha de tancar l'app cada cop que s'obre: es diu i prou (1.1.3)
+            errorSincronitzacio = TextRecurs(R.string.vm_error_sincronitzacio)
+            return
         }
         if (generacio != generacioTarifa) return
+        carregat = true
         serie = dades.serie
         avuiKwh = dades.avui.kwh
         avuiEuros = dades.avui.euros
@@ -599,6 +637,9 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
     fun triaPeriode(p: Periode) {
         periode = p
         picTriat = null
+        // Mentre es calcula, sense les barres ni el percentatge del període d'abans (1.1.3)
+        resum = null
+        pics = emptyList()
         refresca()
     }
 
@@ -754,7 +795,12 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
     }
 
     /** Si ja n'hi ha un amb el mateix nom que encara té el valor típic (del qüestionari), el substitueix. */
+    /** El nom de l'últim aparell afegit: Aparells obre la llista on ha anat a parar (1.1.3). */
+    var darrerAfegit by mutableStateOf<String?>(null)
+        private set
+
     fun afegeixAparell(a: Aparell) {
+        darrerAfegit = a.nom
         val existent = aparells.firstOrNull { it.perCompletar && it.nom.equals(a.nom, ignoreCase = true) }
         desaAparells(listOf(a.copy(id = existent?.id ?: 0)))
     }
@@ -800,9 +846,9 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
             d?.let { desfer = AvisDesfer(TextRecurs(R.string.desfer_estona, aparell.nom), it) }
             estona = null
             refrescaAra()
-            val r = referencies[aparell.id]
+            // Sense missatge a «En directe» (plegat, no es veia i sortia dies després): ja hi ha l'avís amb «Desfés» (1.1.3)
             missatgeDe = null
-            missatgeEntrena = if (r != null) TextRecurs(R.string.passat_desat, aparell.nom, num(if (r.wMin != null) r.max else r.w)) else null
+            missatgeEntrena = null
             pantalla = Pantalla.PRINCIPAL
             pestanya = Pestanya.PER_FER
         }
@@ -1012,6 +1058,8 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         if (seccioConfig != null && config.configurat) seccioConfig = null else pantalla = Pantalla.PRINCIPAL
         lectura = null
         haLlegit = false
+        repo.shellyCanviat()
+        altreShelly = null
         enPrimerPla(true)
     }
 }

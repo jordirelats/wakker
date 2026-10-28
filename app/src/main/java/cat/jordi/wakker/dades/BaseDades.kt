@@ -29,7 +29,13 @@ data class Hora(val ts: Long, val sempre: Double, val linia: Double, val descone
  * (aprox = 2, maqueta 11) omplen les absències llargues i el d'abans de l'app; els exactes, que es baixen
  * del Shelly a casa, els substitueixen.
  */
-class BaseDades(context: Context) : SQLiteOpenHelper(context, "wakker.db", null, 9) {
+class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO) {
+    companion object {
+        /** El fitxer de la base de dades (la còpia de seguretat el substitueix en tornar a obrir l'app). */
+        const val NOM = "wakker.db"
+        const val VERSIO = 9
+    }
+
 
     /**
      * Fins on hi ha el resum per hores (maqueta 16; s, una mitjanit; 0: encara no n'hi ha). D'aquí enrere, les sumes surten de
@@ -449,7 +455,7 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, "wakker.db", null,
 
     /**
      * El primer minut en què la pinça 2 mesura alguna cosa (30 W o més): des de quan hi ha la pinça. El Shelly desa el canal 2
-     * encara que no hi hagi pinça, amb zeros (a Guíxols, fins al 25/10).
+     * encara que no hi hagi pinça, amb zeros.
      */
     fun primerLinia(): Long? = primer("SELECT MIN(ts) FROM minuts WHERE canal = 1 AND wh >= 0.5", "SELECT MIN(ts) FROM hores WHERE linia >= 30")
 

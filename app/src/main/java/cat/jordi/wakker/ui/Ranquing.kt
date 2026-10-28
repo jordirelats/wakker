@@ -97,7 +97,7 @@ private fun FilaDelRanquing(posicio: Int, f: FilaRanquing, part: Double, nomLini
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(f.nom.ifBlank { nomLinia }, Modifier.weight(1f, fill = false), fontSize = 13.5.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(f.nom.ifBlank { nomLinia }, Modifier.weight(1f, fill = false), fontSize = 13.5.sp, fontWeight = FontWeight.Medium, maxLines = 2, lineHeight = 17.sp, overflow = TextOverflow.Ellipsis)
                 if (f.linia) Etiqueta(nomLinia.ifBlank { stringResource(R.string.pinca2_xip) })
             }
             if (f.compressorW != null) Text(stringResource(R.string.ranquing_compressor_curt), fontSize = 11.sp, color = Suau)
@@ -150,13 +150,13 @@ private fun FilaResta(icona: ImageVector, estat: EstatIcona, titol: String, sub:
         Cercle(icona, estat, 26.dp)
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
-            Text(titol, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(titol, fontSize = 13.5.sp, fontWeight = FontWeight.SemiBold, maxLines = 2, lineHeight = 17.sp, overflow = TextOverflow.Ellipsis)
             Text(sub, fontSize = 11.sp, color = Suau, lineHeight = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         Spacer(Modifier.width(10.dp))
         Column(horizontalAlignment = Alignment.End) {
             Text("${num(kwh, 1)} kWh", style = EstilNumero)
-            Text("${num(part * 100)} %", fontSize = 11.sp, color = Suau)
+            Text("${num(part * 100)}\u00A0%", fontSize = 11.sp, color = Suau)
         }
     }
 }

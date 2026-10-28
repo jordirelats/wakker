@@ -75,6 +75,8 @@ import cat.jordi.wakker.dades.NivellPotencia
 import cat.jordi.wakker.dades.Pais
 import cat.jordi.wakker.dades.ResumSetmana
 import cat.jordi.wakker.dades.TipusEnces
+import cat.jordi.wakker.dades.endevina
+import cat.jordi.wakker.dades.Vegada
 import cat.jordi.wakker.dades.encesDelCanal
 import cat.jordi.wakker.dades.nivellPotencia
 import cat.jordi.wakker.shelly.Origen
@@ -100,9 +102,13 @@ fun PantallaAra(vm: WakkerViewModel) {
     ) {
         when {
             l?.origen == Origen.LOCAL -> LiniaEstat(stringResource(R.string.ara_origen_local), Ok, Modifier.padding(start = 2.dp))
+            // A l'adreça de casa hi respon un altre Shelly: no se'n fan servir les dades (1.1.3)
+            vm.altreShelly != null -> LiniaEstat(stringResource(R.string.ara_altre_shelly), Desconegut, Modifier.padding(start = 2.dp))
             l?.origen == Origen.NUVOL -> LiniaEstat(stringResource(R.string.ara_origen_nuvol), PrimariClar, Modifier.padding(start = 2.dp))
             !vm.haLlegit -> LiniaEstat(stringResource(R.string.ara_connectant), Gris, Modifier.padding(start = 2.dp))
             vm.config.teNuvol -> LiniaEstat(stringResource(R.string.ara_sense_connexio), Desconegut, Modifier.padding(start = 2.dp))
+            // Amb l'adreça del Shelly i sense núvol: és el Shelly que no respon, no que falti la clau (1.1.3)
+            vm.config.host.isNotBlank() -> LiniaEstat(stringResource(R.string.ara_no_arribo_shelly), Desconegut, Modifier.padding(start = 2.dp))
             else -> LiniaEstat(stringResource(R.string.ara_falta_clau), Desconegut, Modifier.padding(start = 2.dp))
         }
         vm.versioNova?.let { v ->
@@ -120,7 +126,12 @@ fun PantallaAra(vm: WakkerViewModel) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
             Column {
                 Row(verticalAlignment = Alignment.Bottom) {
-                    Text(l?.let { num(it.total.w) } ?: "—", style = EstilHero.copy(color = colorNivell(nivell, TextPrincipal)), maxLines = 1)
+                    // Sense lectura, un guió gris i prim, no una barra negra (1.1.3)
+                    Text(
+                        l?.let { num(it.total.w) } ?: "–",
+                        style = if (l != null) EstilHero.copy(color = colorNivell(nivell, TextPrincipal)) else EstilHero.copy(color = Gris, fontWeight = FontWeight.Normal),
+                        maxLines = 1,
+                    )
                     Text(" W", Modifier.padding(bottom = 6.dp), fontSize = 24.sp, fontWeight = FontWeight.Medium, color = Suau)
                 }
                 if (l != null && limit != null) Arc(l.total.w, limit, nivell)
@@ -129,7 +140,8 @@ fun PantallaAra(vm: WakkerViewModel) {
             Column(Modifier.weight(1f).padding(top = 6.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Dada(
                     stringResource(R.string.ara_avui),
-                    (if (vm.avuiAproximat) "≈ " else "") + "${num(vm.avuiKwh, 2)} kWh", euros(vm.avuiEuros),
+                    // Abans del primer refresc, «—» i no 0,00 kWh (1.1.3)
+                    if (!vm.carregat) "—" else (if (vm.avuiAproximat) "≈ " else "") + "${num(vm.avuiKwh, 2)} kWh", if (vm.carregat) euros(vm.avuiEuros) else "",
                 )
                 val h = info?.ara
                 Dada(
@@ -225,7 +237,7 @@ private fun Dada(etiqueta: String, valor: String, sota: String, obre: (() -> Uni
         Column(Modifier.padding(horizontal = 10.dp, vertical = 7.dp)) {
             Text(etiqueta.uppercase(Idioma.locale), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold, color = Suau, letterSpacing = 0.05.em)
             Text(valor, style = EstilDada, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(sota, fontSize = 11.sp, color = Suau, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(sota, fontSize = 11.sp, color = Suau, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 14.sp)
         }
     }
 }
@@ -238,7 +250,7 @@ private fun Dada(etiqueta: String, valor: String, sota: String, obre: (() -> Uni
 private fun Arc(w: Double, limitKw: Double, nivell: NivellPotencia) {
     val mesura = rememberTextMeasurer()
     val part = (w / (limitKw * 1000)).toFloat().coerceIn(0f, 1f)
-    val pct = "${num(part * 100.0)} %"
+    val pct = "${num(part * 100.0)}\u00A0%"
     val de = stringResource(R.string.ara_arc_de, num(limitKw, 2))
     val estilPct = EstilNumero.copy(fontSize = 15.sp)
     val estilDe = EstilNumero.copy(fontSize = 10.sp, fontFamily = Inter, fontWeight = FontWeight.Normal, color = Suau)
@@ -304,6 +316,8 @@ private fun EncesAraTargeta(vm: WakkerViewModel, wTotal: Double, va: Double, pf:
     val context = LocalContext.current
     val teLinia = vm.config.teLinia
     var detalls by rememberSaveable { mutableStateOf(false) }
+    // Una cosa encesa que l'app no sap què és: tocant-la, es diu aquí mateix (1.1.3; abans portava a «Per fer», on no hi era)
+    var triant by remember { mutableStateOf<Vegada?>(null) }
     Targeta {
         TitolTargeta(stringResource(R.string.ara_ences_ara))
         val linia = if (teLinia) (wLinia ?: 0.0).coerceAtLeast(0.0) else 0.0
@@ -341,8 +355,8 @@ private fun EncesAraTargeta(vm: WakkerViewModel, wTotal: Double, va: Double, pf:
                 TipusEnces.SENSE_IDENTIFICAR, TipusEnces.NOU -> FilaAra(
                     Icons.Outlined.QuestionMark, EstatIcona.CAL,
                     if (alaLinia) stringResource(R.string.ranquing_linia_altres, vm.config.nomLinia) else stringResource(R.string.ara_sense_identificar),
-                    if (e.tipus == TipusEnces.NOU) stringResource(R.string.ara_acaba_encendre_no_se) else stringResource(R.string.ara_no_se_que_es, quan),
-                    e.w, obre = { vm.pestanya = Pestanya.PER_FER },
+                    if (e.tipus == TipusEnces.NOU || e.vegada == null) stringResource(R.string.ara_acaba_encendre_no_se) else stringResource(R.string.ara_no_se_que_es, quan),
+                    e.w, obre = e.vegada?.let { v -> { triant = v } },
                 )
                 TipusEnces.NEVERA -> FilaAra(
                     icona(o?.nevera?.categoria ?: Categoria.NEVERA), EstatIcona.SAP, o?.nevera?.nom.orEmpty(),
@@ -419,6 +433,16 @@ private fun EncesAraTargeta(vm: WakkerViewModel, wTotal: Double, va: Double, pf:
             if (o?.fresques != true && fons != null) Nota(stringResource(R.string.ara_nomes_potencia), Modifier.padding(bottom = 4.dp))
             Nota(stringResource(R.string.ara_detall, num(va), num(pf, 2), num(volts, 1)))
         }
+    }
+    triant?.let { v ->
+        val candidats = if (v.canal == 1) vm.aparellsLinia else vm.aparellsAEntrenar
+        val refs = if (v.canal == 1) vm.referenciesLinia else vm.referencies
+        val suggerits = endevina(v.w, candidats, refs, 3, v.minuts.toDouble(), v.forma)
+        TriaAparell(
+            stringResource(R.string.pics_vegada, horaMinut(v.ts), durada(v.minuts)), suggerits, candidats, teLinia,
+            tria = { vm.responVegada(v, it.id) }, nou = { vm.responVegada(v, null, it.copy(linia = v.canal == 1)) }, tanca = { triant = null },
+            senseLinia = v.canal == 0 && teLinia && vm.aparellsLinia.isNotEmpty(), nomLinia = vm.config.nomLinia,
+        )
     }
 }
 

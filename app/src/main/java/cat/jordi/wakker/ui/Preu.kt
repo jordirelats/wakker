@@ -1,5 +1,6 @@
 package cat.jordi.wakker.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -120,6 +121,8 @@ fun PantallaPreu(vm: WakkerViewModel) {
     // El que s'ha llegit d'un contracte o factura i s'està revisant; i quantes vegades se n'han posat preus,
     // perquè els camps es tornin a crear amb els valors nous
     var lectura by remember { mutableStateOf<LecturaFactura?>(null) }
+    // Enrere des de la revisió del document torna al preu, i no surt (1.1.3)
+    BackHandler(enabled = lectura != null) { lectura = null }
     var posats by rememberSaveable { mutableIntStateOf(0) }
 
     lectura?.let { l ->

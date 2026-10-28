@@ -147,6 +147,8 @@ fun PantallaAfegir(vm: WakkerViewModel) {
             null -> {}
         }
     }
+    // Enrere al pas 2 torna al pas 1, no surt d'Afegir (1.1.3)
+    BackHandler(enabled = categoria != null && !compartit) { categoria = null; via = null }
     val acaba = { a: Aparell ->
         vm.afegeixAparell(a)
         vm.pantalla = Pantalla.PRINCIPAL
@@ -781,7 +783,7 @@ private fun ColumnScope.AmbPlaca(categoria0: Categoria?, acaba: (Aparell) -> Uni
                 runCatching {
                     // Un fitxer compartit amb Wakker pot ser un PDF: se'n llegeix la primera pàgina
                     val b = if (compartit) {
-                        Document.pagines(context, uri).firstOrNull() ?: throw ErrorUsuari(R.string.error_pdf)
+                        Document.pagines(context, uri, maxPagines = 1).firstOrNull() ?: throw ErrorUsuari(R.string.error_pdf)
                     } else {
                         Placa.carrega(context.contentResolver, uri)
                     }

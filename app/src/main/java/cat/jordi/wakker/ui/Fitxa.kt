@@ -21,6 +21,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -124,7 +125,7 @@ fun PantallaFitxa(vm: WakkerViewModel) {
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Funcionament.entries.forEach { fu ->
                     // Un aparell sempre encès va dins del fons de tota la casa: no pot ser a la línia
-                    Xip(stringResource(fu.nomId), triat = a.funciona == fu) { vm.desaAparells(listOf(a.copy(funciona = fu, linia = a.linia && fu != Funcionament.SEMPRE))) }
+                    Xip(stringResource(fu.nomId), triat = a.funciona == fu, grup = true) { vm.desaAparells(listOf(a.copy(funciona = fu, linia = a.linia && fu != Funcionament.SEMPRE))) }
                 }
             }
             Nota(stringResource(a.funciona.textId))
@@ -205,7 +206,7 @@ private fun FilaVegada(v: Vegada, noEra: () -> Unit) {
             // «No era ell» a totes (maqueta 17): també a les que l'usuari havia dit per error
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(if (v.com == Com.ENSENYAT) R.string.fitxa_ensenyat else R.string.fitxa_reconegut), fontSize = 11.sp, color = Suau)
-                Text(stringResource(R.string.fitxa_no_era), Modifier.clickable(onClick = noEra).padding(vertical = 4.dp), fontSize = 11.5.sp, color = Suau, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
+                Text(stringResource(R.string.fitxa_no_era), Modifier.minimumInteractiveComponentSize().clickable(onClick = noEra).padding(horizontal = 4.dp, vertical = 4.dp), fontSize = 11.5.sp, color = Suau, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline)
             }
         }
     }

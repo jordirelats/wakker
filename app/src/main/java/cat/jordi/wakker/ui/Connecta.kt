@@ -189,7 +189,7 @@ private fun FilaSeccio(icona: ImageVector, titol: String, valor: String, obre: (
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(titol, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(valor, fontSize = 11.5.sp, color = Suau, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(valor, fontSize = 11.5.sp, color = Suau, maxLines = 2, overflow = TextOverflow.Ellipsis, lineHeight = 15.sp)
         }
         Icon(Icons.Outlined.ChevronRight, null, Modifier.size(18.dp), tint = Suau)
     }
@@ -219,7 +219,7 @@ private fun SeccioConnexio(vm: WakkerViewModel) {
     val trobats = remember { mutableStateListOf<Trobat>() }
 
     DisposableEffect(Unit) {
-        val atura = descobreix(context, config.host) { t -> if (trobats.none { it.host == t.host }) trobats += t }
+        val atura = descobreix(context.applicationContext, config.host) { t -> if (trobats.none { it.host == t.host }) trobats += t }
         onDispose { atura() }
     }
 
@@ -268,6 +268,26 @@ private fun SeccioConnexio(vm: WakkerViewModel) {
             Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 4.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (!config.configurat) {
+                // Qui ve d'un altre mòbil, o de Consum: la còpia de seguretat, a dalt de tot (1.1.3), en lloc de tornar-ho a configurar
+                var perConfirmar by remember { mutableStateOf<android.net.Uri?>(null) }
+                val obre = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) perConfirmar = uri }
+                Targeta {
+                    FilaAccio(Icons.Outlined.Restore, stringResource(R.string.copia_primera), stringResource(R.string.copia_restaura_text), !vm.copiant) {
+                        obre.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
+                    }
+                    if (vm.copiant) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
+                    vm.missatgeCopia?.let { Text(it.text(), Modifier.padding(top = 4.dp), fontSize = 13.sp, color = Primari) }
+                }
+                perConfirmar?.let { uri ->
+                    androidx.compose.material3.AlertDialog(
+                        onDismissRequest = { perConfirmar = null },
+                        text = { Text(stringResource(R.string.copia_confirma)) },
+                        confirmButton = { androidx.compose.material3.TextButton(onClick = { vm.restauraCopia(uri); perConfirmar = null }) { Text(stringResource(R.string.copia_restaura)) } },
+                        dismissButton = { androidx.compose.material3.TextButton(onClick = { perConfirmar = null }) { Text(stringResource(R.string.escaneig_cancella)) } },
+                    )
+                }
+            }
             Targeta {
                 TitolTargeta(stringResource(R.string.connecta_titol_shelly))
                 // Els que es troben, en una sola fila que es desplaça de costat: amb l'alçada fixa, la pàgina no es mou mentre
@@ -302,6 +322,10 @@ private fun SeccioConnexio(vm: WakkerViewModel) {
                     Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Outlined.Check, null, tint = Ok)
                         Text("  " + stringResource(R.string.connecta_info_shelly, it.nom, it.model, it.versio), fontSize = 13.sp, color = Ok)
+                    }
+                    // Un altre Shelly que el de casa (1.1.3): si es desa, les dades noves vindran d'aquest
+                    if (config.macShelly.isNotBlank() && it.idDispositiu.isNotBlank() && it.idDispositiu != config.macShelly) {
+                        Nota(stringResource(R.string.connecta_shelly_diferent), Modifier.padding(top = 4.dp))
                     }
                 }
                 error?.let { Text(it, Modifier.padding(top = 8.dp), color = DesconegutText, fontSize = 13.sp) }
@@ -369,30 +393,16 @@ private fun SeccioConnexio(vm: WakkerViewModel) {
                     Text(resumTarifa(config.tarifa), fontSize = 14.sp)
                     Nota(stringResource(R.string.connecta_preu_despres))
                 }
-                // Qui ve d'un altre mòbil, o de Consum: la còpia de seguretat, en lloc de tornar-ho a configurar
-                var perConfirmar by remember { mutableStateOf<android.net.Uri?>(null) }
-                val obre = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) perConfirmar = uri }
-                Targeta {
-                    FilaAccio(Icons.Outlined.Restore, stringResource(R.string.copia_primera), stringResource(R.string.copia_restaura_text), !vm.copiant) {
-                        obre.launch(arrayOf("application/zip", "application/octet-stream", "*/*"))
-                    }
-                    if (vm.copiant) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
-                    vm.missatgeCopia?.let { Text(it.text(), Modifier.padding(top = 4.dp), fontSize = 13.sp, color = Primari) }
-                }
-                perConfirmar?.let { uri ->
-                    androidx.compose.material3.AlertDialog(
-                        onDismissRequest = { perConfirmar = null },
-                        text = { Text(stringResource(R.string.copia_confirma)) },
-                        confirmButton = { androidx.compose.material3.TextButton(onClick = { vm.restauraCopia(uri); perConfirmar = null }) { Text(stringResource(R.string.copia_restaura)) } },
-                        dismissButton = { androidx.compose.material3.TextButton(onClick = { perConfirmar = null }) { Text(stringResource(R.string.escaneig_cancella)) } },
-                    )
-                }
             }
             Spacer(Modifier.height(8.dp))
         }
         Column(Modifier.padding(12.dp)) {
             Button(
                 onClick = {
+                    // El Shelly provat és el de casa des d'ara; amb una adreça nova sense provar, la MAC s'aprèn a la primera lectura (1.1.3)
+                    val i = info
+                    if (i != null && i.idDispositiu.isNotBlank()) config.macShelly = i.idDispositiu
+                    else if (host.trim() != config.host) config.macShelly = ""
                     config.host = host.trim()
                     info?.let { config.model = it.model }
                     config.idDispositiu = netejaId(idNuvol)
@@ -521,14 +531,14 @@ private fun SeccioAvisos(vm: WakkerViewModel) {
                 OpcioAmbAjuda(stringResource(R.string.connecta_quan_gasti), null, apilat = true) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (w in listOf(500.0, 1000.0, 2000.0, 3000.0)) {
-                            Xip("${num(w / 1000, if (w < 1000) 1 else 0)} kW", triat = llindar == w) { llindar = w }
+                            Xip("${num(w / 1000, if (w < 1000) 1 else 0)} kW", triat = llindar == w, grup = true) { llindar = w }
                         }
                     }
                 }
                 OpcioAmbAjuda(stringResource(R.string.connecta_inesperat_durant), null, apilat = true) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         for (m in listOf(10, 30, 60)) {
-                            Xip(textMinuts(m), triat = minuts == m) { minuts = m }
+                            Xip(textMinuts(m), triat = minuts == m, grup = true) { minuts = m }
                         }
                     }
                 }
@@ -683,19 +693,23 @@ private fun SeccioSobre(vm: WakkerViewModel) {
 }
 
 /** Una cosa que cal acreditar: el nom, de qui és, què hi fa, la llicència (si és programari) i on és. */
-private class Credit(val nom: String, val de: String, @androidx.annotation.StringRes val queId: Int, val llicencia: String?, val url: String, val dades: Boolean = false)
+/** El nom i de qui és, als textos (1.1.3): «Comissió Europea», «Google, HP i Adaptech»… també es tradueixen. */
+private class Credit(
+    @androidx.annotation.StringRes val nomId: Int, @androidx.annotation.StringRes val deId: Int, @androidx.annotation.StringRes val queId: Int,
+    val llicencia: String?, val url: String, val dades: Boolean = false,
+)
 
 /** Tot el que hi ha a l'app que no és nostre, i d'on surten les dades. */
 private val credits = listOf(
-    Credit("Shelly", "Allterco Robotics", R.string.credits_shelly, null, "https://www.shelly.com", dades = true),
-    Credit("EPREL", "Comissió Europea", R.string.credits_eprel, null, "https://eprel.ec.europa.eu", dades = true),
-    Credit("EnergyZero", "EnergyZero B.V.", R.string.credits_energyzero, null, "https://www.energyzero.nl", dades = true),
-    Credit("Red Eléctrica (REData)", "Red Eléctrica de España", R.string.credits_ree, null, "https://www.ree.es/es/datos/apidatos", dades = true),
-    Credit("Inter", "Rasmus Andersson", R.string.credits_inter, "SIL Open Font License 1.1", "https://rsms.me/inter/"),
-    Credit("Tesseract OCR i Tesseract4Android", "Google, HP i Adaptech", R.string.credits_tesseract, "Apache 2.0", "https://github.com/adaptech-cz/Tesseract4Android"),
-    Credit("ZXing Android Embedded", "JourneyApps i el projecte ZXing", R.string.credits_zxing, "Apache 2.0", "https://github.com/journeyapps/zxing-android-embedded"),
-    Credit("Jetpack Compose, AndroidX i Material 3", "Google", R.string.credits_compose, "Apache 2.0", "https://developer.android.com/jetpack/compose"),
-    Credit("Kotlin i kotlinx.coroutines", "JetBrains", R.string.credits_kotlin, "Apache 2.0", "https://kotlinlang.org"),
+    Credit(R.string.credits_nom_shelly, R.string.credits_de_shelly, R.string.credits_shelly, null, "https://www.shelly.com", dades = true),
+    Credit(R.string.credits_nom_eprel, R.string.credits_de_eprel, R.string.credits_eprel, null, "https://eprel.ec.europa.eu", dades = true),
+    Credit(R.string.credits_nom_energyzero, R.string.credits_de_energyzero, R.string.credits_energyzero, null, "https://www.energyzero.nl", dades = true),
+    Credit(R.string.credits_nom_ree, R.string.credits_de_ree, R.string.credits_ree, null, "https://www.ree.es/es/datos/apidatos", dades = true),
+    Credit(R.string.credits_nom_inter, R.string.credits_de_inter, R.string.credits_inter, "SIL Open Font License 1.1", "https://rsms.me/inter/"),
+    Credit(R.string.credits_nom_tesseract, R.string.credits_de_tesseract, R.string.credits_tesseract, "Apache 2.0", "https://github.com/adaptech-cz/Tesseract4Android"),
+    Credit(R.string.credits_nom_zxing, R.string.credits_de_zxing, R.string.credits_zxing, "Apache 2.0", "https://github.com/journeyapps/zxing-android-embedded"),
+    Credit(R.string.credits_nom_compose, R.string.credits_de_compose, R.string.credits_compose, "Apache 2.0", "https://developer.android.com/jetpack/compose"),
+    Credit(R.string.credits_nom_kotlin, R.string.credits_de_kotlin, R.string.credits_kotlin, "Apache 2.0", "https://kotlinlang.org"),
 )
 
 @Composable
@@ -703,8 +717,8 @@ private fun FilaCredit(c: Credit) {
     val context = LocalContext.current
     Row(Modifier.fillMaxWidth().clickable { obreWeb(context, c.url) }.padding(vertical = 7.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(c.nom, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-            Text(c.de + " · " + stringResource(c.queId), fontSize = 11.5.sp, color = Suau, lineHeight = 15.sp)
+            Text(stringResource(c.nomId), fontSize = 14.sp, fontWeight = FontWeight.Medium)
+            Text(stringResource(c.deId) + " · " + stringResource(c.queId), fontSize = 11.5.sp, color = Suau, lineHeight = 15.sp)
             if (c.llicencia != null) Text(stringResource(R.string.credits_llicencia, c.llicencia), fontSize = 11.5.sp, color = Suau)
         }
         Icon(Icons.Outlined.OpenInNew, null, Modifier.size(16.dp), tint = Suau)
@@ -789,9 +803,9 @@ private fun TargetaIdioma() {
     Targeta {
         TitolTargeta(stringResource(R.string.connecta_idioma))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Xip(stringResource(R.string.connecta_idioma_mobil), triat = triada == null) { tria(null) }
+            Xip(stringResource(R.string.connecta_idioma_mobil), triat = triada == null, grup = true) { tria(null) }
             llengues.forEach { l ->
-                Xip(l.getDisplayName(l).replaceFirstChar { it.titlecase(l) }, triat = l == marcada) { tria(l) }
+                Xip(l.getDisplayName(l).replaceFirstChar { it.titlecase(l) }, triat = l == marcada, grup = true) { tria(l) }
             }
         }
     }
@@ -799,7 +813,7 @@ private fun TargetaIdioma() {
 
 private fun netejaServidor(s: String) = s.trim().removePrefix("https://").removeSuffix("/")
 
-/** L'ID que fa servir el núvol és la MAC en minúscules: accepta "shellyemg3-dcb4…" o "DC:B4:…". */
+/** L'ID que fa servir el núvol és la MAC en minúscules: accepta "shellyemg3-aabb…" o "AA:BB:…". */
 private fun netejaId(s: String) = s.trim().lowercase().substringAfterLast('-').replace(":", "")
 
 /**

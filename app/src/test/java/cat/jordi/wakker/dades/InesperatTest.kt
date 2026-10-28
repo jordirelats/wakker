@@ -1,11 +1,9 @@
 package cat.jordi.wakker.dades
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 import java.time.ZoneId
 
 class InesperatTest {
@@ -24,7 +22,7 @@ class InesperatTest {
 
     @Test
     fun explicadorAmbInterval() {
-        // La bomba de calor de l'aigua de Guíxols: 254–784 W; la nevera, 52 W
+        // Una bomba de calor de l'aigua: 254–784 W; la nevera, 52 W
         val e = Explicador(listOf(ref(1, 52.0), ref(2, 500.0, 254.0, 784.0)))
         assertEquals(0.0, e.explica(600.0).residu, 1e-9)
         assertEquals(0.0, e.explica(300.0).residu, 1e-9)
@@ -68,18 +66,6 @@ class InesperatTest {
         assertEquals(0.8 * 336.0, lo, 1.0)
         assertEquals(1.2 * 654.0, hi, 1.0)
         assertNull(intervalEpisodi(listOf(600.0, 600.0, 5.0, 5.0, 5.0), 600.0))
-    }
-
-    /** Amb la setmana real de Guíxols (fora del repositori): el compressor de la nevera, 52 W. Només si hi ha el fitxer. */
-    @Test
-    fun neveraRealDeGuixols() {
-        val fitxer = File(System.getProperty("user.home"), "Projectes/Consum-Shelly/maqueta/dades_setmana_guixols.json")
-        if (!fitxer.exists()) return
-        val minuts = Regex("""\[(\d+),\s*([\d.]+),\s*[\d.]+]""").findAll(fitxer.readText())
-            .map { it.groupValues[1].toLong() to it.groupValues[2].toDouble() }.toList()
-        val w = potenciaCompressor(minuts, ZoneId.of("Europe/Madrid"))
-        assertNotNull(w)
-        assertEquals(52.0, w!!, 6.0)
     }
 
     @Test

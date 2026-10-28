@@ -24,6 +24,8 @@ enum class Origen { LOCAL, NUVOL }
 data class Lectura(
     val total: Canal, val linia: Canal?, val origen: Origen, val ts: Long,
     val whTotal: Double? = null, val whLinia: Double? = null,
+    /** La MAC del Shelly que ha respost (de `sys`, en minúscules), per saber que és el de casa (1.1.3). */
+    val mac: String? = null,
 ) {
     companion object {
         /** Llegeix l'estat de Shelly.GetStatus, que és igual en local i al núvol. */
@@ -32,6 +34,7 @@ data class Lectura(
             return Lectura(
                 total, canal(estat.optJSONObject("em1:1")), origen, System.currentTimeMillis() / 1000,
                 comptador(estat.optJSONObject("em1data:0")), comptador(estat.optJSONObject("em1data:1")),
+                estat.optJSONObject("sys")?.optString("mac")?.let(::normalitzaMac)?.takeIf { it.isNotBlank() },
             )
         }
 
@@ -45,10 +48,14 @@ data class Lectura(
 
 data class InfoShelly(val model: String, val idDispositiu: String, val nom: String, val versio: String)
 
+/** Una MAC com la desa l'app: en minúscules i sense «:» ni «-» («AA:BB:CC:12:34:56» → «aabbcc123456»). */
+fun normalitzaMac(s: String) = s.trim().lowercase().replace(":", "").replace("-", "")
+
 private fun llegeix(c: HttpURLConnection): String {
     try {
         if (c.responseCode !in 200..299) throw IOException("HTTP ${c.responseCode}")
-        return c.inputStream.bufferedReader().readText()
+        // Com a molt 4 MB (l'historial d'un dia del núvol en fa uns quants kB): una resposta sense fi no omple la memòria
+        return llegeixFins(c.inputStream, 4 * 1024 * 1024)
     } finally {
         c.disconnect()
     }
@@ -68,7 +75,7 @@ class ShellyLocal(private val host: String) {
         val o = rpc("Shelly.GetDeviceInfo")
         return InfoShelly(
             model = o.optString("model"),
-            idDispositiu = o.optString("mac").lowercase(),
+            idDispositiu = normalitzaMac(o.optString("mac")),
             nom = o.optString("name").takeIf { it.isNotBlank() && it != "null" } ?: o.optString("id"),
             versio = o.optString("ver"),
         )
@@ -122,12 +129,16 @@ class ShellyNuvol(private val servidor: String, private val clau: String, privat
     private val base: String
         get() {
             val sense = servidor.substringAfter("://")
-            return if (servidor.startsWith("http://") && local(sense.substringBefore('/').substringBefore(':'))) servidor else "https://$sense"
+            // L'amfitrió de debò (una adreça amb «usuari@» enviaria la petició a un altre lloc): HTTP només si és una IP local,
+            // i cap adreça amb usuari (1.1.3)
+            val uri = runCatching { java.net.URI("https://$sense") }.getOrNull()
+            if (uri?.rawUserInfo != null) return "https://${uri.host.orEmpty()}"
+            return if (servidor.startsWith("http://") && uri?.host != null && local(uri.host)) servidor else "https://$sense"
         }
 
     /**
      * El consum de cada hora d'un dia (maqueta 11), del canal [canal]: (inici de l'hora, s; Wh). El núvol el guarda
-     * des que el Shelly s'hi connecta (a Guíxols, des del 16/09/2026) i quadra amb el del Shelly. Amb un rang d'un dia,
+     * des que el Shelly s'hi connecta i quadra amb el del Shelly. Amb un rang d'un dia,
      * el dóna per hores; les hores que no té (el futur) surten com a «missing» i no hi són. Les dates són a la zona
      * horària del Shelly, que torna la resposta.
      */
@@ -143,13 +154,11 @@ class ShellyNuvol(private val servidor: String, private val clau: String, privat
         val o = JSONObject(llegeix(c))
         val zona = runCatching { ZoneId.of(o.optString("timezone")) }.getOrDefault(ZoneId.systemDefault())
         val historial = o.optJSONArray("history") ?: return emptyList()
-        return (0 until historial.length()).mapNotNull { i ->
+        val entrades = (0 until historial.length()).map { i ->
             val h = historial.getJSONObject(i)
-            if (h.optBoolean("missing") || !h.has("consumption")) return@mapNotNull null
-            val ts = LocalDateTime.parse(h.getString("datetime"), format).atZone(zona)
-            if (ts.toLocalDate() != dia) return@mapNotNull null
-            ts.toEpochSecond() to h.getDouble("consumption")
+            h.getString("datetime") to (if (h.optBoolean("missing") || !h.has("consumption")) null else h.getDouble("consumption"))
         }
+        return horesDelNuvol(entrades, zona, dia)
     }
 
     fun lectura(): Lectura? {
@@ -165,5 +174,21 @@ class ShellyNuvol(private val servidor: String, private val clau: String, privat
         if (llista.length() == 0) return null
         val estat = llista.getJSONObject(0).optJSONObject("status") ?: return null
         return Lectura.de(estat, Origen.NUVOL)
+    }
+}
+
+/**
+ * Les hores d'un dia de l'historial del núvol: («AAAA-MM-DD HH:MM:SS» local, Wh o null si falta) → (inici de l'hora, s; Wh).
+ * El dia que es retarda l'hora, l'hora de les 2 surt dues vegades: la segona és la de després del canvi (1.1.3; abans totes
+ * dues anaven al mateix instant i se'n perdia una).
+ */
+internal fun horesDelNuvol(entrades: List<Pair<String, Double?>>, zona: ZoneId, dia: LocalDate): List<Pair<Long, Double>> {
+    val format = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    var anterior = Long.MIN_VALUE
+    return entrades.mapNotNull { (text, wh) ->
+        var ts = LocalDateTime.parse(text, format).atZone(zona)
+        if (ts.toEpochSecond() <= anterior) ts = ts.withLaterOffsetAtOverlap()
+        anterior = maxOf(anterior, ts.toEpochSecond())
+        if (wh == null || ts.toLocalDate() != dia) null else ts.toEpochSecond() to wh
     }
 }

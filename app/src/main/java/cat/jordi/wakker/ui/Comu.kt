@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -346,7 +347,7 @@ fun LiniaEstat(text: String, punt: Color, modifier: Modifier = Modifier) {
  * Any, Al moment / Cada 15 min, i l'aspecte.
  */
 @Composable
-fun <T> Pestanyes(opcions: List<T>, triada: T, nom: @Composable (T) -> String, enTriar: (T) -> Unit) {
+fun <T> Pestanyes(opcions: List<T>, triada: T, nom: @Composable (T) -> String, linies: Int = 2, enTriar: (T) -> Unit) {
     Row(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(GrisFluix).padding(3.dp).selectableGroup(),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
@@ -358,8 +359,9 @@ fun <T> Pestanyes(opcions: List<T>, triada: T, nom: @Composable (T) -> String, e
                 selected = actiu, onClick = { enTriar(o) }, modifier = Modifier.weight(1f).semantics { role = Role.Tab }, shape = RoundedCornerShape(9.dp),
                 color = if (actiu) Superficie else Color.Transparent, shadowElevation = if (actiu) 1.dp else 0.dp,
             ) {
+                // Dues línies si cal: amb la lletra gran, «Països Baixos» o «Normaal en dal» no es tallen (1.1.3)
                 Text(
-                    nom(o), Modifier.padding(vertical = 6.dp, horizontal = 4.dp), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    nom(o), Modifier.padding(vertical = 6.dp, horizontal = 4.dp), fontSize = 13.sp, maxLines = linies, overflow = TextOverflow.Ellipsis, lineHeight = 16.sp,
                     fontWeight = if (actiu) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (actiu) TextPrincipal else Suau, textAlign = TextAlign.Center,
                 )
@@ -370,7 +372,7 @@ fun <T> Pestanyes(opcions: List<T>, triada: T, nom: @Composable (T) -> String, e
 
 /** Un xip per triar (un aparell, una opció): blanc amb vora; triat, verd. */
 @Composable
-fun Xip(text: String, triat: Boolean = false, icona: ImageVector? = null, color: Color? = null, onClick: () -> Unit) {
+fun Xip(text: String, triat: Boolean = false, icona: ImageVector? = null, color: Color? = null, grup: Boolean = false, onClick: () -> Unit) {
     val fons = when {
         triat -> Primari
         color != null -> color
@@ -379,7 +381,9 @@ fun Xip(text: String, triat: Boolean = false, icona: ImageVector? = null, color:
     Row(
         Modifier.clip(RoundedCornerShape(10.dp)).background(fons)
             .then(if (!triat && color == null) Modifier.border(1.dp, Vora, RoundedCornerShape(10.dp)) else Modifier)
-            .clickable(onClick = onClick).padding(horizontal = 11.dp, vertical = 7.dp),
+            // En un grup d'opcions, el lector de pantalla diu quina és la triada (1.1.3)
+            .then(if (grup) Modifier.selectable(selected = triat, role = Role.RadioButton, onClick = onClick) else Modifier.clickable(onClick = onClick))
+            .padding(horizontal = 11.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icona != null) {

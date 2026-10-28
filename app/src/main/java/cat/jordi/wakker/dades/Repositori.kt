@@ -7,6 +7,7 @@ import cat.jordi.wakker.shelly.Lectura
 import cat.jordi.wakker.shelly.Origen
 import cat.jordi.wakker.shelly.ShellyLocal
 import cat.jordi.wakker.shelly.ShellyNuvol
+import cat.jordi.wakker.shelly.normalitzaMac
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -152,12 +153,39 @@ class Repositori(val config: Config, private val bd: BaseDades) {
      * comptador d'energia ([desaComptador]).
      */
     suspend fun lectura(): Lectura? = withContext(Dispatchers.IO) {
-        val l = (if (config.host.isNotBlank()) runCatching { ShellyLocal(config.host).lectura() }.getOrNull() else null)
+        val local = if (config.host.isNotBlank()) runCatching { ShellyLocal(config.host).lectura() }.getOrNull() else null
+        // Si a l'adreça de casa hi respon un altre Shelly, la seva lectura no és de casa: es va al núvol (1.1.3)
+        val l = local?.takeIf { esElDeCasa(it.mac) }
             ?: if (config.teNuvol) {
                 runCatching { ShellyNuvol(config.servidorNuvol, config.clauNuvol, config.idDispositiu).lectura() }.getOrNull()
             } else null
         if (l != null) runCatching { desaComptador(l) }
         l
+    }
+
+    /**
+     * La MAC del Shelly que respon a l'adreça de casa quan no és el de casa (1.1.3): el router ha donat l'adreça a un altre
+     * aparell. Null si el que respon és el bo, o si encara no se sap.
+     */
+    @Volatile var altreShelly: String? = null
+        private set
+
+    /**
+     * Si el Shelly que ha respost (la seva [mac]) és el de casa. La primera vegada, la MAC s'aprèn (qui ja tenia l'app
+     * configurada abans de la 1.1.3); un firmware que no la digués no es pot comprovar, i es dona per bo.
+     */
+    private fun esElDeCasa(mac: String?): Boolean {
+        val m = mac?.let(::normalitzaMac)?.takeIf { it.isNotBlank() } ?: return true
+        val esperada = config.macShelly
+        if (esperada.isBlank()) config.macShelly = m
+        val bo = esperada.isBlank() || m == esperada
+        altreShelly = if (bo) null else m
+        return bo
+    }
+
+    /** En desar la Connexió: el Shelly pot ser un altre, i el que es va trobar abans ja no compta. */
+    fun shellyCanviat() {
+        altreShelly = null
     }
 
     /**
@@ -167,8 +195,12 @@ class Repositori(val config: Config, private val bd: BaseDades) {
      * comptador, perquè els minuts exactes ja vindran amb la sincronització. D'un en un: l'app i el treball de
      * fons poden llegir alhora.
      */
-    @Synchronized
-    private fun desaComptador(l: Lectura) {
+    private val bloqueigComptador = Any()
+
+    /** Amb el seu bloqueig (1.1.3): només s'ha d'excloure a si mateix, i les lectures en directe no han d'esperar res més. */
+    private fun desaComptador(l: Lectura) = synchronized(bloqueigComptador) { desaComptadorAra(l) }
+
+    private fun desaComptadorAra(l: Lectura) {
         val wh = l.whTotal ?: return
         val minut = l.ts / 60 * 60
         val abans = config.comptador
@@ -196,12 +228,15 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         if (config.host.isBlank()) return@withContext 0
         sincronitzant.withLock {
             val shelly = ShellyLocal(config.host)
+            // Abans de baixar cap minut, que sigui el Shelly de casa: els d'un altre aparell es barrejarien amb els de casa (1.1.3)
+            if (!esElDeCasa(shelly.info().idDispositiu)) throw ErrorUsuari(R.string.vm_altre_shelly)
             var n = 0
             val canals = if (config.teLinia) listOf(0, 1) else listOf(0)
             for (canal in canals) {
                 val desDe = bd.darrerTs(canal)?.plus(60) ?: (ara() - 14 * 86400)
                 shelly.minuts(canal, desDe) { files ->
-                    bd.insereixMinuts(canal, files)
+                    // Cap minut de més de 5 minuts endavant: deixaria la sincronització encallada al futur (1.1.3)
+                    bd.insereixMinuts(canal, files.filter { it.ts <= ara() + 300 })
                     n += files.size
                 }
             }
@@ -259,11 +294,16 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         private val mercat = if (tarifa.dinamica) bd.preus(tarifa.pais, desDe - 86400, finsA + 86400) else emptyMap()
         private val mitja = mercat.values.average().takeIf { !it.isNaN() }
 
+        /** Si el període no té preus de mercat (un dia vell omplert pel núvol): la mitjana de tots els desats (1.1.3). */
+        private val mitjaTotes by lazy {
+            if (tarifa.dinamica) bd.preus(tarifa.pais, 0, ara() + 2 * 86400).values.average().takeIf { !it.isNaN() } else null
+        }
+
         fun mercatDe(ts: Long) = mercat[(ts / 3600) * 3600]
 
         /** Si és dinàmica i no tenim el preu d'aquella hora, fa servir la mitjana dels que tenim. */
         fun de(ts: Long): Double =
-            tarifa.preuKwh(ts, zona, ::mercatDe) ?: tarifa.preuKwh(ts, zona) { mitja } ?: tarifa.preuFix
+            tarifa.preuKwh(ts, zona, ::mercatDe) ?: tarifa.preuKwh(ts, zona) { mitja ?: mitjaTotes } ?: tarifa.preuFix
 
         fun euros(hores: List<Hora>, dies: Double) = Euros(
             hores.sumOf { it.sempre * de(it.ts) }, hores.sumOf { it.linia * de(it.ts) },
@@ -363,7 +403,10 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         val euros = preus.euros(llista, diesFixos)
         // El període d'abans, si l'app ja en tenia totes les dades
         val anterior = mou(periode, primer, -1)
-        val anteriorKwh = if (primerDades != null && !anterior.isBefore(primerDades)) bd.kwhEntre(iniciDia(anterior), desDe) else null
+        // Si és el d'ara (a mitges), el mateix tros del d'abans: de l'inici fins al mateix temps transcorregut (1.1.3)
+        val actual = !avui.isBefore(primer) && avui.isBefore(fi)
+        val finsAnterior = if (actual) minOf(iniciDia(anterior) + (ara() - desDe), desDe) else desDe
+        val anteriorKwh = if (primerDades != null && !anterior.isBefore(primerDades)) bd.kwhEntre(iniciDia(anterior), finsAnterior) else null
         val sempre = llista.sumOf { it.sempre }
         val linia = llista.sumOf { it.linia }
         val desconegut = llista.sumOf { it.desconegut }
@@ -382,7 +425,10 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         val desDe = iniciDia(avui.withDayOfMonth(1))
         val hores = perHores(desDe, ara() + 60, fons)
         val preus = Preus(desDe, ara())
-        val euros = preus.euros(hores, avui.dayOfMonth.toDouble())
+        // Els fixos dels dies del mes que tenen dades, com l'Historial (1.1.3)
+        val primerDades = bd.primerTs()?.let { Instant.ofEpochSecond(it).atZone(zona).toLocalDate() }
+        val dies = if (primerDades == null) 0.0 else maxOf(0L, ChronoUnit.DAYS.between(maxOf(avui.withDayOfMonth(1), primerDades), avui.plusDays(1))).toDouble()
+        val euros = preus.euros(hores, dies)
         val sempre = hores.sumOf { it.sempre }
         val linia = hores.sumOf { it.linia }
         val desconegut = hores.sumOf { it.desconegut }
@@ -411,21 +457,21 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         var ep0 = 0.0
         var liniaAssignada = 0.0
         for (v in vegades) {
-            // Una vegada que passa de mitjanit (el cotxe, de les 19:54 a les 3:00) es reparteix entre els dos dies
+            // Una vegada que passa de mitjanit (la càrrega d'un cotxe de nit) es reparteix entre els dos dies
             val kwh = v.kwh * part(v, desDe, finsA)
             if (v.canal == 0) ep0 += kwh
             val a = v.aparellId?.let(perId::get)
             if (a == null) {
                 if (v.canal == 0) {
                     senseId += kwh
-                    senseIdEuros += kwh * p.de(v.ts)
+                    senseIdEuros += eurosDe(v, desDe, finsA, p)
                 }
                 continue
             }
             if (v.canal == 1) liniaAssignada += kwh
             val x = acc.getOrPut(a.id) { Acc() }
             x.kwh += kwh
-            x.euros += kwh * p.de(v.ts)
+            x.euros += eurosDe(v, desDe, finsA, p)
             if (v.ts >= desDe) x.cops++
             if (v.com == Com.ENSENYAT && v.ts >= desDe) x.ensenyats++
         }
@@ -541,19 +587,22 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         calReassignar = true
     }
 
-    /** La còpia de seguretat (1.0.2): la base de dades i la configuració en un zip. Ningú no escriu mentrestant. */
-    @Synchronized
+    /**
+     * La còpia de seguretat (1.0.2): la base de dades i la configuració en un zip. La foto de la base es fa amb les vegades i el
+     * resum aturats (un moment, és un fitxer local); el zip, que pot anar al Drive i trigar, sense cap bloqueig (1.1.3).
+     */
     fun copiaSeguretat(context: Context, versioApp: String, sortida: java.io.OutputStream) {
-        synchronized(bloqueigVegades) { synchronized(bloqueigResum) { Copia.escriu(context, bd, config, versioApp, sortida) } }
+        val foto = synchronized(bloqueigVegades) { synchronized(bloqueigResum) { Copia.fotografia(context, bd) } }
+        try {
+            Copia.escriu(foto, config, versioApp, sortida)
+        } finally {
+            foto.delete()
+        }
     }
 
-    /** Restaura una còpia en lloc del que hi ha. Després, tot es torna a mirar (les vegades, el resum, els avisos). */
-    @Synchronized
-    fun restauraCopia(context: Context, entrada: java.io.InputStream): Copia.Manifest {
-        val m = synchronized(bloqueigVegades) { synchronized(bloqueigResum) { Copia.llegeix(context, bd, config, entrada) } }
-        haCanviat()
-        return m
-    }
+    /** Deixa una còpia a punt per restaurar, ja comprovada: es posa en lloc del que hi ha en tornar a obrir l'app (1.1.3). */
+    fun preparaRestauracio(context: Context, entrada: java.io.InputStream): Copia.Manifest =
+        Copia.prepara(context, BaseDades.VERSIO, entrada)
 
     /** Després de posar o treure la pinça 2: la propera vegada, totes les vegades de nou. */
     fun tornaABuscarVegades() {
@@ -614,14 +663,16 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         val refsCasa = referencies()
         val linia = aparellsLinia()
         val refsLinia = referenciesLinia()
-        // Abans de la pinça 2, els aparells de la línia també eren a la resta de la casa (el cotxe de Guíxols fins al 25/10)
+        // Abans de la pinça 2, els aparells de la línia també eren a la resta de la casa (un cotxe que ja carregava abans de posar-hi la pinça)
         val iniciLinia = iniciLinia()
         val tots = casa + linia
         val refsTots = refsCasa + refsLinia
         return vegades.map { v ->
             val e = index.de(v)
             val (a, com) = when {
-                v.canal == 1 -> assigna(v, linia, refsLinia, e, exclosos)
+                // Només les etiquetes dels aparells que hi ha ara a la línia: si s'han tret, la línia sencera ja surt com un més
+                // al rànquing, i comptar-la també a l'aparell la sumaria dues vegades (1.1.3)
+                v.canal == 1 -> assigna(v, linia, refsLinia, e.filter { et -> linia.any { it.id == et.aparellId } }, exclosos)
                 abansDeLaLinia(v, iniciLinia) -> assigna(v, tots, refsTots, e, exclosos)
                 else -> assigna(v, casa, refsCasa, e, exclosos)
             }
@@ -794,6 +845,27 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         return (min(fi, finsA) - max(v.ts, desDe)).coerceAtLeast(0).toDouble() / (fi - v.ts)
     }
 
+    /**
+     * Els euros de la part d'una vegada que cau dins de [desDe, finsA): cada hora al seu preu (1.1.3). Abans tota la vegada
+     * anava al preu de l'hora en què començava: una càrrega del cotxe que començava en hora punta es pagava tota a preu de punta.
+     */
+    private fun eurosDe(v: Vegada, desDe: Long, finsA: Long, p: Preus): Double {
+        val fi = v.fi + 60
+        val t0 = max(v.ts, desDe)
+        val t1 = min(fi, finsA)
+        if (t1 <= t0) return 0.0
+        val perSegon = v.kwh / (fi - v.ts).coerceAtLeast(1)
+        var euros = 0.0
+        var t = t0
+        while (t < t1) {
+            val h = iniciHora(t, zona)
+            val seguent = min(t1, h + 3600)
+            euros += perSegon * (seguent - t) * p.de(t)
+            t = seguent
+        }
+        return euros
+    }
+
     // ---------- Què hi ha encès ara (maqueta 15) ----------
 
     /** Les vegades que encara duraven a l'últim minut del Shelly: només si és de fa menys de 10 minuts (a casa i al dia). */
@@ -842,7 +914,6 @@ class Repositori(val config: Config, private val bd: BaseDades) {
     /**
      * Les vegades més grosses dels últims 7 dies que encara no tenen nom (com a molt [quants], de 0,3 kWh o més; no les que
      * l'usuari ha dit que no sap què eren), per preguntar-ne d'un toc; i quant és tot el que no té nom i quina part del total.
-     * A Guíxols, la setmana del 19 al 25/10: el 61 %, gairebé tot les dues càrregues del cotxe del dissabte.
      */
     fun senseNom(quants: Int = 3): SenseNom {
         val desDe = ara() - 7 * 86400
@@ -858,7 +929,7 @@ class Repositori(val config: Config, private val bd: BaseDades) {
             // Els que l'usuari ha dit que no eren, no es proposen
             val candidats = candidatsDe(v).filter { a -> nos.none { it.aparellId == a.id && encavalca(v, it) > 0 } }
             VegadaSenseNom(
-                v, v.kwh * p.de(v.ts), endevina(v.w, candidats, refs, candidats.size, v.minuts.toDouble(), v.forma),
+                v, eurosDe(v, v.ts, v.fi + 60, p), endevina(v.w, candidats, refs, candidats.size, v.minuts.toDouble(), v.forma),
                 bd.minutsW(linia = false, v.ts - 15 * 60, v.fi + 16 * 60).map { it.ts to it.w },
             )
         }
@@ -1068,7 +1139,7 @@ class Repositori(val config: Config, private val bd: BaseDades) {
     /**
      * Aprèn sola els aparells de la línia (maqueta 12): cada episodi acabat de la línia, de 10 minuts o més, és una mostra
      * de l'aparell de la línia que s'hi assembla clarament ([triaLinia]). Ningú més no hi gasta, i per això no cal
-     * preguntar-ho. A Guíxols, la bomba de calor de l'aigua: 486–492 W durant uns 70 minuts. Com a molt cada mitja hora.
+     * preguntar-ho. Com a molt cada mitja hora.
      * D'un en un (la sincronització i els canvis de l'usuari): si no, un episodi faria dues mostres.
      */
     @Synchronized
@@ -1211,8 +1282,9 @@ class Repositori(val config: Config, private val bd: BaseDades) {
                     val hores = demana(0, dia)
                     if (hores.isEmpty()) {
                         if (vell) mirats += e
-                        // Abans de la primera dada del Shelly, 3 dies seguits sense res: el núvol ja no en té més
-                        if ((primerExacte == null || dia.isBefore(primerExacte)) && ++buitsSeguits >= 3) {
+                        // Abans de la primera dada del Shelly, 14 dies seguits sense res: el núvol ja no en té més (fins a la
+                        // 1.1.2 eren 3, i un cap de setmana sense wifi tallava l'historial per sempre)
+                        if ((primerExacte == null || dia.isBefore(primerExacte)) && ++buitsSeguits >= 14) {
                             c.nuvolSenseAbans = e
                             break
                         }
@@ -1335,19 +1407,50 @@ class Repositori(val config: Config, private val bd: BaseDades) {
      * els minuts que ha triat, en fa una pregunta (amb avís). [restaW] és el total menys la línia.
      */
     @Synchronized
-    fun comprovaInesperat(restaW: Double): Pregunta? {
+    fun comprovaInesperat(restaW: Double, pausa: Long = DetectorInesperat.PAUSA_S): Pregunta? {
         val c = config
         if (!c.avisInesperat) return null
         val fons = fonsW() ?: return null
         val residu = explicador().explica(restaW - fons).residu
         val d = DetectorInesperat(c.llindarInesperat, c.minutsInesperat, c.inesperatDes, c.inesperatAlt, c.inesperatPregunta != 0L, c.darrerAvisInesperat)
-        val avisa = d.mira(ara(), residu)
+        val avisa = d.mira(ara(), residu, pausa)
+        c.inesperatMirat = ara()
+        return desaDetector(d, if (avisa) d.des to residu else null)
+    }
+
+    /**
+     * Des del treball de fons (1.1.3): amb els minuts exactes nous que ha portat la sincronització, minut a minut (com
+     * [simulaAvisos]); si no n'hi ha (fora de casa), amb la lectura d'ara ([restaAra]) i una pausa més llarga que el període
+     * del treball de fons. Abans, cada crida, cada 15 minuts o més, tornava a començar l'episodi i no s'avisava mai.
+     */
+    @Synchronized
+    fun comprovaInesperatDeFons(restaAra: Double?): Pregunta? {
+        val c = config
+        if (!c.avisInesperat) return null
+        val fons = fonsW() ?: return null
+        val minuts = bd.serie(maxOf(c.inesperatMirat + 1, ara() - 3 * 3600), ara() + 60).filterNot { it.aprox }
+        if (minuts.isEmpty()) return restaAra?.let { comprovaInesperat(it, pausa = 45 * 60L) }
+        val e = explicador()
+        val linia = c.teLinia
+        val d = DetectorInesperat(c.llindarInesperat, c.minutsInesperat, c.inesperatDes, c.inesperatAlt, c.inesperatPregunta != 0L, c.darrerAvisInesperat)
+        var avis: Pair<Long, Double>? = null
+        for (p in minuts) {
+            val r = e.explica(max(p.wTotal - (if (linia) p.wLinia else 0.0), 0.0) - fons).residu
+            if (d.mira(p.ts, r)) avis = d.des to r
+        }
+        c.inesperatMirat = minuts.last().ts
+        return desaDetector(d, avis)
+    }
+
+    /** Desa l'estat del detector i, si cal avisar, en fa la pregunta. */
+    private fun desaDetector(d: DetectorInesperat, avis: Pair<Long, Double>?): Pregunta? {
+        val c = config
         c.inesperatDes = d.des
         c.inesperatAlt = d.alt
         c.darrerAvisInesperat = d.darrerAvis
         if (!d.avisat) c.inesperatPregunta = 0
-        if (!avisa) return null
-        val id = bd.creaPregunta(d.des, residu)
+        if (avis == null) return null
+        val id = bd.creaPregunta(avis.first, avis.second)
         c.inesperatPregunta = id
         return bd.pregunta(id)
     }

@@ -234,12 +234,14 @@ class Config(context: Context) {
             p.getLong("giny_ts", 0), p.getFloat("giny_w", 0f).toDouble(),
             p.getFloat("giny_kwh", -1f).takeIf { it >= 0 }?.toDouble(), p.getFloat("giny_euros", 0f).toDouble(),
             p.getString("giny_mes_nom", null), p.getFloat("giny_mes_w", -1f).takeIf { it >= 0 }?.toDouble(),
+            p.getFloat("giny_preu", -1f).takeIf { it >= 0 }?.toDouble(), p.getString("giny_preu_text", null),
         )
         set(v) {
             if (v == null) return
             p.edit().putLong("giny_ts", v.ts).putFloat("giny_w", v.w.toFloat()).putFloat("giny_kwh", (v.kwh ?: -1.0).toFloat())
                 .putFloat("giny_euros", (v.euros ?: 0.0).toFloat()).putString("giny_mes_nom", v.mesNom)
-                .putFloat("giny_mes_w", (v.mesW ?: -1.0).toFloat()).apply()
+                .putFloat("giny_mes_w", (v.mesW ?: -1.0).toFloat())
+                .putFloat("giny_preu", (v.preu ?: -1.0).toFloat()).putString("giny_preu_text", v.preuText).apply()
         }
 
     /** Configurada vol dir que sap on llegir: el Shelly de casa, el núvol o tots dos. */
@@ -252,8 +254,14 @@ const val ASPECTE_MOBIL = 0
 const val ASPECTE_CLAR = 1
 const val ASPECTE_FOSC = 2
 
-/** El que ensenya el giny: la lectura (instant i W), el consum d'avui (kWh, €) i el que més gasta ara (nom i W). */
-data class EstatGiny(val ts: Long, val w: Double, val kwh: Double?, val euros: Double?, val mesNom: String?, val mesW: Double?)
+/**
+ * El que ensenya el giny: la lectura (instant i W), el consum d'avui (kWh, €), el que més gasta ara (nom i W), i el preu de
+ * l'hora (€/kWh) amb el seu text («preu únic, 0,207 €/kWh»; 1.1.2).
+ */
+data class EstatGiny(
+    val ts: Long, val w: Double, val kwh: Double?, val euros: Double?, val mesNom: String?, val mesW: Double?,
+    val preu: Double? = null, val preuText: String? = null,
+)
 
 /** Els comptadors d'energia del Shelly (Wh acumulats) en un minut. */
 data class Comptador(val ts: Long, val wh: Double, val whLinia: Double?)

@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  El giny gran (maqueta 17, proposta B): els watts d'ara i el d'avui, la gràfica de les 3 últimes hores i el que més gasta.
-  Si és baix, la gràfica i la fila de baix s'amaguen (Giny.kt): no es talla mai el text.
+  El giny gran (1.1.2, demanat per en Jordi: «un giny amb les 4 targetes de dalt» d'Ara): la capçalera; els watts amb l'arc
+  de la potència contractada a l'esquerra i, a la dreta, les targetes Avui (kWh i €) i Ara (€/h i el preu); i, si el giny és
+  prou alt, la gràfica de les 3 últimes hores i el que més gasta. Si és baix, l'arc i la targeta Ara s'amaguen (Giny.kt).
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/giny"
@@ -9,7 +10,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/giny_fons"
     android:orientation="vertical"
-    android:paddingHorizontal="14dp"
+    android:paddingHorizontal="12dp"
     android:paddingTop="10dp"
     android:paddingBottom="10dp">
 
@@ -55,53 +56,130 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:gravity="center_vertical"
+        android:layout_marginTop="4dp"
         android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/watts"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:fontFamily="sans-serif"
-            android:textStyle="bold"
-            android:includeFontPadding="false"
-            android:maxLines="1"
-            android:text="—"
-            android:textColor="@color/giny_text"
-            android:textSize="34sp" />
-
-        <TextView
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:paddingStart="4dp"
-            android:text="W"
-            android:textColor="@color/giny_suau"
-            android:textSize="16sp" />
-
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="end"
             android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/avui"
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:maxLines="1"
-                android:textColor="@color/giny_text"
-                android:textSize="13sp"
-                android:textStyle="bold" />
+                android:baselineAligned="true"
+                android:orientation="horizontal">
 
-            <TextView
-                android:id="@+id/euros"
-                android:layout_width="wrap_content"
+                <TextView
+                    android:id="@+id/watts"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:text="—"
+                    android:textColor="@color/giny_text"
+                    android:textSize="34sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="4dp"
+                    android:text="W"
+                    android:textColor="@color/giny_suau"
+                    android:textSize="16sp" />
+            </LinearLayout>
+
+            <ImageView
+                android:id="@+id/arc"
+                android:layout_width="match_parent"
+                android:layout_height="58dp"
+                android:layout_marginTop="2dp"
+                android:scaleType="fitCenter"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_weight="1.15"
+            android:orientation="vertical">
+
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:maxLines="1"
-                android:textColor="@color/giny_suau"
-                android:textSize="12sp" />
+                android:background="@drawable/giny_targeta"
+                android:orientation="vertical"
+                android:paddingHorizontal="9dp"
+                android:paddingVertical="6dp">
+
+                <TextView
+                    android:id="@+id/avui_titol"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/giny_suau"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/avui"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/giny_text"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/euros"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:maxLines="1"
+                    android:textColor="@color/giny_suau"
+                    android:textSize="11sp" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@+id/ara_targeta"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:background="@drawable/giny_targeta"
+                android:orientation="vertical"
+                android:paddingHorizontal="9dp"
+                android:paddingVertical="6dp">
+
+                <TextView
+                    android:id="@+id/ara_titol"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/giny_suau"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/ara_eur"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:includeFontPadding="false"
+                    android:maxLines="1"
+                    android:textColor="@color/giny_text"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/ara_text"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:textColor="@color/giny_suau"
+                    android:textSize="10sp" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
@@ -109,7 +187,7 @@
         android:id="@+id/grafica"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="8dp"
         android:layout_weight="1"
         android:scaleType="fitXY"
         android:visibility="gone" />

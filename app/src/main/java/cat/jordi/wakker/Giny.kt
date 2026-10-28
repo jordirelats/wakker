@@ -18,6 +18,9 @@ import android.view.View
 import android.widget.RemoteViews
 import androidx.core.content.ContextCompat
 import cat.jordi.wakker.dades.EstatGiny
+import cat.jordi.wakker.dades.Franja
+import kotlin.math.cos
+import kotlin.math.sin
 import cat.jordi.wakker.dades.NivellPotencia
 import cat.jordi.wakker.dades.Repositori
 import cat.jordi.wakker.dades.nivellPotencia
@@ -65,15 +68,29 @@ object Ginys {
         val ara = System.currentTimeMillis()
         if (!forca && ara - darrer < 55_000) return
         val avui = runCatching { repo.avui() }.getOrNull()
+        // El preu de l'hora i el seu text, com a la targeta Ara de l'app (1.1.2)
+        val info = runCatching { repo.infoPreu() }.getOrNull()
+        val h = info?.ara
+        val preu = h?.preu
+        val preuText = when {
+            h == null -> null
+            preu == null -> context.getString(R.string.ara_sense_preu, context.getString(h.franja.nomId))
+            h.franja == Franja.UNICA -> context.getString(R.string.ara_preu_unic, num(preu, 3))
+            else -> {
+                val nom = context.getString(h.franja.nomId)
+                val franja = if (h.franja == Franja.MERCAT) nom else info.canviaA?.let { context.getString(R.string.ara_franja_fins_a, nom, it) } ?: nom
+                context.getString(R.string.ara_preu_franja, franja, num(preu, 3))
+            }
+        }
         if (l == null) {
             // Sense lectura (la tarifa ha canviat i encara no se n'ha fet cap): els euros d'avui nous, amb la lectura d'abans
             val e = repo.config.giny ?: return
             if (!forca) return
-            repo.config.giny = e.copy(kwh = avui?.kwh ?: e.kwh, euros = avui?.euros ?: e.euros)
+            repo.config.giny = e.copy(kwh = avui?.kwh ?: e.kwh, euros = avui?.euros ?: e.euros, preu = preu, preuText = preuText)
         } else {
             darrer = ara
             val mes = runCatching { repo.encesAra(l).firstOrNull() }.getOrNull()
-            repo.config.giny = EstatGiny(l.ts, l.total.w, avui?.kwh, avui?.euros, mes?.first, mes?.second)
+            repo.config.giny = EstatGiny(l.ts, l.total.w, avui?.kwh, avui?.euros, mes?.first, mes?.second, preu, preuText)
         }
         pinta(context)
     }
@@ -169,13 +186,29 @@ object Ginys {
         v.setTextViewText(R.id.hora, if (vella(e)) hora else context.getString(R.string.giny_ara_hora, hora))
         v.setTextColor(R.id.punt, ContextCompat.getColor(context, if (vella(e)) R.color.giny_suau else R.color.giny_ok))
         watts(context, v, e, limitKw)
-        v.setTextViewText(R.id.avui, e.kwh?.let { context.getString(R.string.giny_avui_kwh, num(it, 1)) } ?: "")
+        // Les targetes Avui i Ara, com a l'app (1.1.2)
+        v.setTextViewText(R.id.avui_titol, context.getString(R.string.ara_avui).uppercase())
+        v.setTextViewText(R.id.avui, e.kwh?.let { "${num(it, 2)} kWh" } ?: "—")
         v.setTextViewText(R.id.euros, e.kwh?.let { euros(e.euros ?: 0.0) } ?: "")
-        // La capçalera i els watts fan uns 70 dp; la fila de baix, uns 24; la gràfica, la resta
+        v.setTextViewText(R.id.ara_titol, context.getString(R.string.ara_ara).uppercase())
+        val preu = e.preu
+        v.setTextViewText(R.id.ara_eur, if (preu != null && !vella(e)) context.getString(R.string.ara_euros_hora, euros(e.w / 1000 * preu)) else "—")
+        v.setTextViewText(R.id.ara_text, e.preuText ?: "")
+        // Si és baix (menys de 135 dp), sense l'arc ni la targeta Ara: la capçalera, els watts i Avui fan uns 92 dp; si no,
+        // la fila de les targetes fa uns 100 dp i l'arc hi cap sota els watts (146 dp en total). La resta, la gràfica
+        val compacte = altDp < 135
+        v.setViewVisibility(R.id.ara_targeta, if (compacte) View.GONE else View.VISIBLE)
+        val arcBmp = if (!compacte && limitKw != null) runCatching { arc(context, e.w, limitKw, (ampleDp - 32) * 0.47, 58) }.getOrNull() else null
+        if (arcBmp != null) {
+            v.setViewVisibility(R.id.arc, View.VISIBLE)
+            v.setImageViewBitmap(R.id.arc, arcBmp)
+        } else {
+            v.setViewVisibility(R.id.arc, View.GONE)
+        }
+        val base = if (compacte) 92 else 146
         val nom = e.mesNom
         val w = e.mesW
-        val ambFila = altDp >= 100 && nom != null && w != null && !vella(e)
-        // El punt de l'estat: verd si és d'ara, gris si és vella
+        val ambFila = altDp - base >= 30 && nom != null && w != null && !vella(e)
         if (ambFila) {
             v.setViewVisibility(R.id.fila_mes, View.VISIBLE)
             v.setTextViewText(R.id.mes, context.getString(R.string.giny_ara_aparell, nom))
@@ -183,8 +216,8 @@ object Ginys {
         } else {
             v.setViewVisibility(R.id.fila_mes, View.GONE)
         }
-        val altGrafica = altDp - 74 - (if (ambFila) 30 else 0)
-        val bitmap = if (altGrafica >= 34) runCatching { grafica(context, serie, ampleDp - 28, altGrafica) }.getOrNull() else null
+        val altGrafica = altDp - base - (if (ambFila) 30 else 0)
+        val bitmap = if (altGrafica >= 44) runCatching { grafica(context, serie, ampleDp - 24, altGrafica) }.getOrNull() else null
         if (bitmap != null) {
             v.setViewVisibility(R.id.grafica, View.VISIBLE)
             v.setImageViewBitmap(R.id.grafica, bitmap)
@@ -192,6 +225,48 @@ object Ginys {
             v.setViewVisibility(R.id.grafica, View.GONE)
         }
         return v
+    }
+
+    /**
+     * L'arc de la potència contractada (1.1.2), com el d'Ara: la part que es fa servir, del color del nivell, les marques del
+     * 80 % (gris) i el 90 % (ambre), i al mig el percentatge i «de X kW».
+     */
+    private fun arc(context: Context, w: Double, limitKw: Double, ampleDp: Double, altDp: Int): Bitmap {
+        val d = context.resources.displayMetrics.density
+        val escala = minOf(d, 2f)
+        val ample = (ampleDp * escala).toInt().coerceIn(80, 600)
+        val alt = (altDp * escala).toInt()
+        val bmp = Bitmap.createBitmap(ample, alt, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        val part = (w / (limitKw * 1000)).toFloat().coerceIn(0f, 1f)
+        val gruix = 6 * escala
+        val r = minOf(ample / 2f - gruix, alt - gruix - 2 * escala)
+        val cx = ample / 2f
+        val cy = alt - gruix / 2 - 2 * escala
+        val caixa = android.graphics.RectF(cx - r, cy - r, cx + r, cy + r)
+        val nivell = nivellPotencia(w, limitKw)
+        val colorPle = when (nivell) {
+            NivellPotencia.ALT -> ContextCompat.getColor(context, R.color.giny_ambre)
+            NivellPotencia.LIMIT -> 0xFFDC2626.toInt()
+            else -> ContextCompat.getColor(context, R.color.giny_primari)
+        }
+        fun pinzell(color: Int) = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color; style = Paint.Style.STROKE; strokeWidth = gruix; strokeCap = Paint.Cap.ROUND }
+        c.drawArc(caixa, 180f, 180f, false, pinzell(ContextCompat.getColor(context, R.color.giny_targeta)))
+        c.drawArc(caixa, 180f, 180f * part.coerceAtLeast(0.012f), false, pinzell(colorPle))
+        for ((f, color) in listOf(0.8f to R.color.giny_suau, 0.9f to R.color.giny_ambre)) {
+            val a = Math.PI * (1 - f)
+            val marca = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = ContextCompat.getColor(context, color); strokeWidth = 2 * escala; strokeCap = Paint.Cap.ROUND }
+            c.drawLine(cx + (r - 6 * escala) * cos(a).toFloat(), cy - (r - 6 * escala) * sin(a).toFloat(), cx + (r + 6 * escala) * cos(a).toFloat(), cy - (r + 6 * escala) * sin(a).toFloat(), marca)
+        }
+        fun lletra(sp: Float, color: Int, negreta: Boolean) = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = color
+            textSize = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, context.resources.displayMetrics) * escala / d
+            textAlign = Paint.Align.CENTER
+            if (negreta) typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+        c.drawText("${num(part * 100.0)} %", cx, cy - 9 * escala, lletra(13f, ContextCompat.getColor(context, R.color.giny_text), true))
+        c.drawText(context.getString(R.string.ara_arc_de, num(limitKw, 2)), cx, cy - 1 * escala, lletra(9f, ContextCompat.getColor(context, R.color.giny_suau), false))
+        return bmp
     }
 
     /**

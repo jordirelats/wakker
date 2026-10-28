@@ -23,7 +23,7 @@
             android:layout_width="20dp"
             android:layout_height="20dp"
             android:background="@drawable/giny_icona"
-            android:src="@drawable/ic_llamp" />
+            android:src="@drawable/ic_ull" />
 
         <TextView
             android:layout_width="0dp"
@@ -63,7 +63,8 @@
             android:id="@+id/watts"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="sans-serif-light"
+            android:fontFamily="sans-serif"
+            android:textStyle="bold"
             android:includeFontPadding="false"
             android:maxLines="1"
             android:text="—"

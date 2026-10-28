@@ -79,14 +79,27 @@ object Ginys {
     }
 
     /**
-     * Des d'Android (cada mitja hora, o en canviar-ne la mida): la gràfica llegeix la base de dades, i el fil de la pantalla
-     * no l'ha d'esperar.
+     * Des d'Android (en afegir el giny, cada mitja hora, o en canviar-ne la mida): la lectura i la gràfica van per la xarxa i la
+     * base de dades, i el fil de la pantalla no les ha d'esperar.
      */
     fun pintaDeFons(receptor: AppWidgetProvider, context: Context) {
         val pendent = receptor.goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                runCatching { pinta(context) }
+                runCatching {
+                    // Si la lectura desada té més de 2 minuts (o no n'hi ha cap), se'n fa una de nova: així el giny s'omple de
+                    // seguida en afegir-lo i es posa al dia cada mitja hora encara que la vigilància no sigui en marxa
+                    val repo = (context.applicationContext as WakkerApp).repo
+                    val e = repo.config.giny
+                    if (repo.config.configurat && (e == null || System.currentTimeMillis() / 1000 - e.ts > 120)) {
+                        val l = repo.lectura()
+                        if (l != null) {
+                            actualitza(context, repo, l, forca = true)
+                            return@runCatching
+                        }
+                    }
+                    pinta(context)
+                }
             } finally {
                 pendent.finish()
             }
@@ -108,17 +121,21 @@ object Ginys {
         for (id in ids(context, GinyPetit::class.java)) gestor.updateAppWidget(id, petit(context, e, limit))
     }
 
-    /** Una lectura de fa més de 20 minuts ja no és «ara». */
-    private fun vella(e: EstatGiny) = System.currentTimeMillis() / 1000 - e.ts > 20 * 60
+    /**
+     * Una lectura de fa més de 35 minuts ja no és «ara»: la feina de fons passa cada 15 minuts, però Android la pot endarrerir
+     * força; amb 20 minuts (fins a la 1.1.0) el giny deia «—» massa sovint. Vella, el número es queda, en gris, i l'hora ho diu.
+     */
+    private fun vella(e: EstatGiny) = System.currentTimeMillis() / 1000 - e.ts > 35 * 60
 
     /** Els watts, del color del nivell (taronja des del 80 %, vermell des del 90 %); el launcher reaprofita la vista: sempre es posa. */
     private fun watts(context: Context, v: RemoteViews, e: EstatGiny, limitKw: Double?) {
-        v.setTextViewText(R.id.watts, if (vella(e)) "—" else num(e.w))
+        v.setTextViewText(R.id.watts, num(e.w))
         v.setTextColor(
             R.id.watts,
-            when (nivellPotencia(e.w, limitKw).takeIf { !vella(e) }) {
-                NivellPotencia.ALT -> 0xFFD97706.toInt()
-                NivellPotencia.LIMIT -> 0xFFDC2626.toInt()
+            when {
+                vella(e) -> ContextCompat.getColor(context, R.color.giny_suau)
+                nivellPotencia(e.w, limitKw) == NivellPotencia.ALT -> 0xFFD97706.toInt()
+                nivellPotencia(e.w, limitKw) == NivellPotencia.LIMIT -> 0xFFDC2626.toInt()
                 else -> ContextCompat.getColor(context, R.color.giny_text)
             },
         )
@@ -129,7 +146,9 @@ object Ginys {
         v.setOnClickPendingIntent(R.id.giny, Avisos.obreApp(context))
         if (e == null) return v
         watts(context, v, e, limitKw)
-        v.setTextViewText(R.id.avui, e.kwh?.let { context.getString(R.string.giny_avui_curt, num(it, 1)) } ?: "")
+        // Vella, el petit diu de quina hora és en lloc del d'avui
+        val hora = Instant.ofEpochSecond(e.ts).atZone(ZoneId.systemDefault()).format(DateTimeFormatter.ofPattern("HH:mm"))
+        v.setTextViewText(R.id.avui, if (vella(e)) context.getString(R.string.giny_de_les, hora) else e.kwh?.let { context.getString(R.string.giny_avui_curt, num(it, 1)) } ?: "")
         return v
     }
 
@@ -156,6 +175,7 @@ object Ginys {
         val nom = e.mesNom
         val w = e.mesW
         val ambFila = altDp >= 100 && nom != null && w != null && !vella(e)
+        // El punt de l'estat: verd si és d'ara, gris si és vella
         if (ambFila) {
             v.setViewVisibility(R.id.fila_mes, View.VISIBLE)
             v.setTextViewText(R.id.mes, context.getString(R.string.giny_ara_aparell, nom))

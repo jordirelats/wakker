@@ -1020,4 +1020,5 @@
     <string name="copia_restaurant">Back-up wordt teruggezet…</string>
     <string name="copia_desant">Back-up wordt opgeslagen…</string>
     <string name="config_copia">back-up</string>
+    <string name="giny_de_les">van %1$s</string>
 </resources>

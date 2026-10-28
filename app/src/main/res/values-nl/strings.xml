@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    De teksten van de app Consum, in het Nederlands. Uitleg over vertalen staat bovenaan res/values/strings.xml.
+    De teksten van de app Wakker, in het Nederlands. Uitleg over vertalen staat bovenaan res/values/strings.xml.
 -->
 <resources>
 
@@ -422,7 +422,7 @@
     <!-- Missatges d'estat (Configuració i Entrena) -->
     <string name="vm_ultima_versio">Je hebt de nieuwste versie al.</string>
     <string name="vm_no_he_pogut_mirar">Controleren is niet gelukt: %1$s</string>
-    <string name="vm_permet_installar">Sta toe dat Consum apps installeert, kom hier terug en tik nog een keer op ‘Bijwerken’.</string>
+    <string name="vm_permet_installar">Sta toe dat Wakker apps installeert, kom hier terug en tik nog een keer op ‘Bijwerken’.</string>
     <string name="vm_no_s_ha_pogut_baixar">Downloaden is mislukt: %1$s</string>
     <string name="vm_error_sincronitzacio">Ik kan de Shelly thuis niet bereiken</string>
     <string name="vm_entrena_poques_lectures">Ik heb nog te weinig gegevens. Wacht een paar seconden en probeer het opnieuw.</string>
@@ -482,9 +482,9 @@
     <string name="marca_sense_etiqueta">Kleine apparaten (koffiezetapparaat, waterkoker, magnetron…) hebben geen energielabel.</string>
     <string name="marca_busca_internet">Zoek ‘%1$s’ op internet</string>
     <string name="marca_foto_placa">Maak een foto van het typeplaatje</string>
-    <string name="marca_comparteix">Vind je het productblad of het energielabel op internet? Deel het met Consum, dan leest de app het.</string>
+    <string name="marca_comparteix">Vind je het productblad of het energielabel op internet? Deel het met Wakker, dan leest de app het.</string>
     <string name="marca_a_ma">Of voeg het toe en vul het verbruik zelf in:</string>
-    <string name="marca_compartit_no_eprel">Consum kan alleen links van EPREL lezen. Je kunt ook een foto of pdf van het typeplaatje of het energielabel delen.</string>
+    <string name="marca_compartit_no_eprel">Wakker kan alleen links van EPREL lezen. Je kunt ook een foto of pdf van het typeplaatje of het energielabel delen.</string>
 
     <!-- La cerca a la web de l'EPREL -->
     <string name="cerca_buscant">Zoeken in EPREL. Dit kan een paar seconden duren…</string>
@@ -878,7 +878,7 @@
     <string name="config_dades">Gegevens</string>
     <string name="config_aspecte">Weergave en taal</string>
     <string name="config_sobre">Over de app</string>
-    <string name="config_sobre_text">Consum volgt het verbruik van een huis met een Shelly EM, zonder server: de gegevens blijven op de telefoon.</string>
+    <string name="config_sobre_text">Wakker volgt het verbruik van een huis met een Shelly EM, zonder server: de gegevens blijven op de telefoon.</string>
     <string name="config_shelly_a">Shelly %1$s</string>
     <string name="config_nomes_nuvol">alleen via de cloud</string>
     <string name="config_nuvol_ok">cloud</string>
@@ -1014,14 +1014,10 @@
     <string name="copia_desada">Back-up opgeslagen.</string>
     <string name="copia_restaurada">Back-up teruggezet: die van %1$s.</string>
     <string name="copia_error">Het is niet gelukt: %1$s</string>
-    <string name="copia_no_valida">Dit bestand is geen back-up van Consum.</string>
+    <string name="copia_no_valida">Dit bestand is geen back-up van Wakker (of van Consum, de vorige naam).</string>
     <string name="copia_massa_nova">De back-up is van een nieuwere versie van de app: werk de app eerst bij.</string>
     <string name="copia_primera">Heb je een back-up? Zet die terug</string>
     <string name="copia_restaurant">Back-up wordt teruggezet…</string>
     <string name="copia_desant">Back-up wordt opgeslagen…</string>
-    <string name="wakker_titol">Consum heet nu Wakker</string>
-    <string name="wakker_text">Het is dezelfde app met een nieuwe naam. Maak een back-up (Instellingen → Gegevens), installeer Wakker, zet de back-up daar terug en verwijder daarna Consum.</string>
-    <string name="wakker_copia">Back-up maken</string>
-    <string name="wakker_installa">Wakker installeren</string>
     <string name="config_copia">back-up</string>
 </resources>

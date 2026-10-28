@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- La icona monocroma (els temes d'Android 13): l'ull i el llamp, d'un sol color -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:pathData="M20,54 Q54,22 88,54 Q54,86 20,54 Z" android:strokeColor="#FFFFFFFF" android:strokeWidth="7" android:strokeLineJoin="round" android:fillColor="#00000000" />
+    <path android:pathData="M57,41 L47.5,55 L55,55 L51,67 L61.5,52 L54,52 Z" android:fillColor="#FFFFFFFF" />
+</vector>

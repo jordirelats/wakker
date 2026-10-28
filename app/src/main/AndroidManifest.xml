@@ -17,7 +17,7 @@
 
     <!-- El Shelly de casa parla HTTP sense xifrar a la xarxa local; el núvol i l'EPREL van per HTTPS. -->
     <application
-        android:name=".ConsumApp"
+        android:name=".WakkerApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"

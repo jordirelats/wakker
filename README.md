@@ -1,8 +1,8 @@
-# Consum
+# Wakker
 
 App d'Android per saber què gasta cada aparell de casa i quant costa, amb un mesurador d'energia Shelly i sense cap servidor.
 
-*English below.*
+*English below.* Fins a la 1.0.2 es deia Consum: aquesta és la mateixa app, amb el nom nou i l'identificador nou (`cat.jordi.wakker`); Consum té una còpia de seguretat per passar-hi.
 
 ## Què fa
 
@@ -100,7 +100,7 @@ Fa servir aquestes llibreries i dades, totes amb llicència Apache-2.0:
 
 ## English
 
-**Consum** is an Android app that shows what each household appliance uses and what it costs, using a Shelly energy meter (Gen2/Gen3 with EM1/EM1Data, e.g. Shelly EM Gen3) and no server of its own.
+**Wakker** is an Android app that shows what each household appliance uses and what it costs, using a Shelly energy meter (Gen2/Gen3 with EM1/EM1Data, e.g. Shelly EM Gen3) and no server of its own.
 
 - **Live view and history** (days, weeks, months and years, browsable back in time): Spain 2.0TD/PVPC, Netherlands fixed, normaal/dal or dynamic (EnergyZero), or a single price. Fixed costs are shown separately.
 - **Appliance inventory**: a room-by-room questionnaire, the EU energy label QR (EPREL), a brand and model search on the EPREL website, a photo of the rating plate (read on the device with Tesseract), or just the appliance type. Appliances are always on, self-starting (fridge, heat pump, water heater) or switched on by the user; only the last ones need training. The fridge compressor is found automatically in the night-time data.

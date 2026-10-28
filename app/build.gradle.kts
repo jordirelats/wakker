@@ -18,15 +18,15 @@ val propietatsLocals = Properties().apply {
 val clauConsum = rootProject.file(propietatsLocals.getProperty("consum.clau") ?: "../claus/consum-signatura.keystore")
 
 android {
-    namespace = "cat.jordi.consum"
+    namespace = "cat.jordi.wakker"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "cat.jordi.consum"
+        applicationId = "cat.jordi.wakker"
         minSdk = 26
         targetSdk = 35
-        versionCode = 34
-        versionName = "1.0.2"
+        versionCode = 35
+        versionName = "1.1.0"
         // Tesseract porta codi natiu: només el dels mòbils (a la versió de prova, també el de l'emulador)
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }

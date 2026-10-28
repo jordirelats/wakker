@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-    Els textos de l'app Consum, en català (la llengua per defecte).
+    Els textos de l'app Wakker, en català (la llengua per defecte).
 
     Per traduir l'app a una altra llengua:
     1. Copia aquest fitxer a res/values-<codi>/strings.xml (per exemple values-es o values-en).
@@ -8,7 +8,7 @@
     3. Deixa igual els %1$s, %2$d... (són els valors que hi posa l'app).
     4. Els apòstrofs i les cometes van amb una barra al davant: l\'app, \"text\".
     5. A codi_idioma, posa-hi el codi de la teva llengua.
-    La llengua nova surt sola a l'app i a la configuració d'Android (Aplicacions → Consum → Idioma).
+    La llengua nova surt sola a l'app i a la configuració d'Android (Aplicacions → Wakker → Idioma).
     Hi ha una altra traducció a res/values-nl/strings.xml (neerlandès).
 
     To translate the app: copy this file to res/values-<code>/strings.xml, translate every <string>
@@ -16,7 +16,7 @@
     quotes (\', \") and set codi_idioma to your language code. A Dutch version is in res/values-nl.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:locale="ca">
-    <string name="app_name" translatable="false">Consum</string>
+    <string name="app_name" translatable="false">Wakker</string>
 
     <!-- El codi de la llengua d'aquesta traducció (BCP 47). Decideix com s'escriuen els números i els dies: posa-hi el teu, per exemple en-GB o es-ES. -->
     <string name="codi_idioma">ca-ES</string>
@@ -565,7 +565,7 @@
     <!-- En mirar si hi ha versió nova; %1$s és l'error -->
     <string name="vm_no_he_pogut_mirar">No he pogut mirar-ho: %1$s</string>
     <!-- «Actualitza» és el botó connecta_actualitza -->
-    <string name="vm_permet_installar">Permet que Consum instal·li apps, torna aquí i prem «Actualitza» un altre cop.</string>
+    <string name="vm_permet_installar">Permet que Wakker instal·li apps, torna aquí i prem «Actualitza» un altre cop.</string>
     <!-- %1$s és l'error -->
     <string name="vm_no_s_ha_pogut_baixar">No s\'ha pogut baixar: %1$s</string>
     <string name="vm_error_sincronitzacio">No arribo al Shelly de casa</string>
@@ -647,11 +647,11 @@
     <!-- Botó que passa a la pestanya Placa -->
     <string name="marca_foto_placa">Fes una foto de la placa</string>
     <!-- La fitxa de producte o l'etiqueta energètica trobades a internet es poden compartir amb l'app des del navegador -->
-    <string name="marca_comparteix">Si trobes la fitxa o l\'etiqueta a internet, comparteix-la amb Consum i la llegirà.</string>
+    <string name="marca_comparteix">Si trobes la fitxa o l\'etiqueta a internet, comparteix-la amb Wakker i la llegirà.</string>
     <!-- Abans del formulari per afegir l'aparell escrivint-ne el consum -->
     <string name="marca_a_ma">O afegeix-lo amb el consum a mà:</string>
-    <!-- Avís breu (Toast) quan es comparteix amb Consum un text sense cap enllaç de l'EPREL -->
-    <string name="marca_compartit_no_eprel">Consum només llegeix els enllaços de l\'EPREL. També pots compartir-hi una foto o un PDF de la placa o de l\'etiqueta.</string>
+    <!-- Avís breu (Toast) quan es comparteix amb Wakker un text sense cap enllaç de l'EPREL -->
+    <string name="marca_compartit_no_eprel">Wakker només llegeix els enllaços de l\'EPREL. També pots compartir-hi una foto o un PDF de la placa o de l\'etiqueta.</string>
 
     <!-- La cerca a la web de l'EPREL -->
     <string name="cerca_buscant">Buscant-lo a l\'EPREL. Pot trigar uns segons…</string>
@@ -1029,8 +1029,8 @@
     <string name="giny_avui_kwh">Avui %1$s kWh</string>
     <string name="giny_ara_aparell">Ara: %1$s</string>
     <string name="giny_avui_curt">avui %1$s kWh</string>
-    <string name="giny_gran_nom">Consum: ara, avui i qui més</string>
-    <string name="giny_petit_nom">Consum: ara</string>
+    <string name="giny_gran_nom">Wakker: ara, avui i qui més</string>
+    <string name="giny_petit_nom">Wakker: ara</string>
     <string name="giny_gran_descripcio">Els watts d\'ara, el d\'avui, la gràfica de les 3 últimes hores i el que més gasta</string>
     <string name="giny_petit_descripcio">Els watts d\'ara i els kWh d\'avui</string>
 
@@ -1093,7 +1093,7 @@
     <string name="config_dades">Dades</string>
     <string name="config_aspecte">Aspecte i idioma</string>
     <string name="config_sobre">Sobre l\'app</string>
-    <string name="config_sobre_text">Consum segueix el consum d\'una casa amb un Shelly EM, sense cap servidor: les dades queden al mòbil.</string>
+    <string name="config_sobre_text">Wakker segueix el consum d\'una casa amb un Shelly EM, sense cap servidor: les dades queden al mòbil.</string>
     <string name="config_shelly_a">Shelly %1$s</string>
     <string name="config_nomes_nuvol">només pel núvol</string>
     <string name="config_nuvol_ok">núvol</string>
@@ -1218,7 +1218,7 @@
     <string name="privadesa_text">Les dades del consum queden al mòbil: l\'app no té cap servidor, no envia estadístiques i no demana cap compte. Només parla amb el Shelly (a casa, o pel núvol de Shelly amb la teva clau, que no surt del mòbil), amb l\'EPREL quan afegeixes un aparell, amb EnergyZero o Red Eléctrica per baixar els preus, i amb GitHub per mirar si hi ha una versió nova.</string>
     <string name="exactitud_text">El total de la casa és el que mesura el Shelly. El repartiment per aparells és una estimació: amb una pinça per a tota la casa, els aparells de potència semblant o que s\'encenen alhora es poden confondre. Els euros surten de la tarifa que hi posis, no de la factura.</string>
 
-    <!-- La còpia de seguretat i el pas a Wakker (1.0.2) -->
+    <!-- La còpia de seguretat (1.0.2) -->
     <string name="copia_titol">Còpia de seguretat</string>
     <string name="copia_text">La base de dades i la configuració en un fitxer: per canviar de mòbil, o per passar a Wakker.</string>
     <string name="copia_desa">Desa una còpia</string>
@@ -1229,14 +1229,10 @@
     <string name="copia_desada">Còpia desada.</string>
     <string name="copia_restaurada">Còpia restaurada: la del %1$s.</string>
     <string name="copia_error">No s\'ha pogut: %1$s</string>
-    <string name="copia_no_valida">Aquest fitxer no és una còpia de Consum.</string>
+    <string name="copia_no_valida">Aquest fitxer no és una còpia de Wakker (ni de Consum, l\'app d\'abans).</string>
     <string name="copia_massa_nova">La còpia és d\'una versió més nova de l\'app: actualitza l\'app primer.</string>
     <string name="copia_primera">Tens una còpia de seguretat? Restaura-la</string>
     <string name="copia_restaurant">Restaurant la còpia…</string>
     <string name="copia_desant">Desant la còpia…</string>
-    <string name="wakker_titol">Consum ara es diu Wakker</string>
-    <string name="wakker_text">És la mateixa app amb un nom nou. Fes una còpia de seguretat (Configuració → Dades), instal·la Wakker, restaura-hi la còpia i després desinstal·la Consum.</string>
-    <string name="wakker_copia">Fes la còpia</string>
-    <string name="wakker_installa">Instal·la Wakker</string>
     <string name="config_copia">còpia de seguretat</string>
 </resources>

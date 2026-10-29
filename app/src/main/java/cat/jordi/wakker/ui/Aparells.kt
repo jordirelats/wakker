@@ -172,8 +172,8 @@ private fun FilaAparell(vm: WakkerViewModel, f: FilaRanquing, part: Double, nomL
             }
             if (encaraNo) Text(stringResource(R.string.aparells_mes_encara_no), fontSize = 10.5.sp, color = Suau)
             // Amb l'endoll, l'app l'aprèn sola: ho diu en verd, no en ambre (maqueta 19)
-            else if (teEndoll && aprenent(vm, f)) Text(stringResource(R.string.aparells_apren_endoll), fontSize = 10.5.sp, color = Primari, fontWeight = FontWeight.SemiBold)
-            else if (aprenent(vm, f)) ParaulaAmbre(stringResource(R.string.aparells_nou))
+            else if (teEndoll && aprenent(vm, f) && !vm.config.modeEndolls) Text(stringResource(R.string.aparells_apren_endoll), fontSize = 10.5.sp, color = Primari, fontWeight = FontWeight.SemiBold)
+            else if (aprenent(vm, f) && !(teEndoll && vm.config.modeEndolls)) ParaulaAmbre(stringResource(R.string.aparells_nou))
             Spacer(Modifier.height(4.dp))
             BarraPart(part)
         }

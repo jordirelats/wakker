@@ -292,7 +292,16 @@ class Config(context: Context) {
         }
 
     /** Configurada vol dir que sap on llegir: el Shelly de casa, el núvol o tots dos. */
-    val configurat get() = host.isNotBlank() || teNuvol
+    /**
+     * Sense Shelly, només amb endolls (maqueta 20): qui encara no té el Shelly (la Mònica, fins al desembre) veu el consum de
+     * cada aparell amb endoll. En posar-hi el Shelly (l'adreça o el núvol), el mode s'acaba sol.
+     */
+    var nomesEndolls: Boolean
+        get() = p.getBoolean("nomes_endolls", false)
+        set(v) = p.edit().putBoolean("nomes_endolls", v).apply()
+    val teShelly get() = host.isNotBlank() || teNuvol
+    val modeEndolls get() = nomesEndolls && !teShelly
+    val configurat get() = teShelly || nomesEndolls
     val teLinia get() = nomLinia.isNotBlank()
     val teNuvol get() = servidorNuvol.isNotBlank() && clauNuvol.isNotBlank() && idDispositiu.isNotBlank()
 }

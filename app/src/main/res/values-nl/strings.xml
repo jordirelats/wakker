@@ -1161,4 +1161,20 @@
     <string name="endolls_despres">Zoek daarna de stekker of typ het adres: het account wordt opgeslagen zodra een stekker het accepteert.</string>
     <string name="endolls_canvia">Wijzigen</string>
     <string name="endolls_sense_mesura">Deze Tapo meet geen verbruik (een P100 of P105): je hebt een P110 of P115 nodig.</string>
+    <!-- ===== Només amb endolls (maqueta 20, 1.3.0) ===== -->
+    <string name="mode_shelly">Met een Shelly in huis</string>
+    <string name="mode_shelly_text">Meet het hele huis in de meterkast. Wakker vindt er elk apparaat in.</string>
+    <string name="mode_endolls">Alleen met stekkers, voorlopig</string>
+    <string name="mode_endolls_text">Elk apparaat met een stekker met meting (Tapo of Shelly Plug). De rest van het huis zodra je de Shelly hebt.</string>
+    <string name="mode_endolls_primer">Voeg minstens één stekker toe om te beginnen.</string>
+    <string name="mode_endolls_resta">De rest van het huis: zonder Shelly wordt die niet gemeten.</string>
+    <!-- %1$d: quants endolls -->
+    <string name="mode_ara_estat">Thuis · %1$d stekkers, live</string>
+    <string name="mode_ara_cap">Geen stekker antwoordt: ze worden alleen thuis gelezen</string>
+    <string name="mode_ara_suma">wat de stekkers nu verbruiken</string>
+    <!-- %1$s: el nom de l'endoll; %2$s: els kWh d'avui -->
+    <string name="mode_ara_fila">stekker «%1$s» · vandaag %2$s kWh</string>
+    <string name="mode_ara_sense_aparell">Geen stekker heeft een apparaat: stel het in bij Instellingen → Verbinding.</string>
+    <string name="mode_ara_avis">Je ziet alleen wat een stekker heeft. Met een Shelly in de meterkast ziet Wakker het hele huis en leert ze deze apparaten zelf.</string>
+    <string name="endolls_un_altre">Een ander apparaat…</string>
 </resources>

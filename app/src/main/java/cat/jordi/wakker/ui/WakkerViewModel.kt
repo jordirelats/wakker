@@ -50,6 +50,7 @@ import cat.jordi.wakker.dades.missatge
 import cat.jordi.wakker.dades.mou
 import cat.jordi.wakker.dades.iniciPeriode
 import cat.jordi.wakker.dades.Endoll
+import cat.jordi.wakker.dades.Ranquing
 import cat.jordi.wakker.dades.PeriodeEndoll
 import cat.jordi.wakker.dades.PropostaMoure
 import cat.jordi.wakker.endolls.CredencialsDolentes
@@ -241,6 +242,10 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
     var periodesEndoll by mutableStateOf<List<PeriodeEndoll>>(emptyList())
         private set
     var lecturesEndolls by mutableStateOf<Map<Long, LecturaEndoll>>(emptyMap())
+        private set
+
+    /** Només amb endolls (maqueta 20): el que ha gastat avui cada aparell amb endoll. */
+    var avuiEndolls by mutableStateOf<Ranquing?>(null)
         private set
 
     /** Els endolls que ja es poden moure a un altre aparell (Per fer). */
@@ -440,7 +445,8 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
                 while (isActive) {
                     val l = lectura
                     if (endolls.isNotEmpty()) {
-                        if (l?.origen == Origen.LOCAL) lecturesEndolls = repo.llegeixEndolls()
+                        // Només amb endolls (maqueta 20) no hi ha cap Shelly per saber si s'és a casa: es proven, amb el retrocés
+                        if (l?.origen == Origen.LOCAL || config.modeEndolls) lecturesEndolls = repo.llegeixEndolls()
                         else if (l?.origen == Origen.NUVOL && volta % 4 == 0) lecturesEndolls = repo.llegeixEndolls(nomesNuvol = true)
                     }
                     volta++
@@ -529,6 +535,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
                 resumDeLaSetmana(),
                 repo.aparellsLinia(),
                 repo.endolls(), repo.periodesEndoll(), repo.propostesMoure(),
+                if (config.modeEndolls) repo.resum(Periode.DIA).ranquing else null,
             )
         } } catch (e: CancellationException) {
             throw e
@@ -557,6 +564,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         endolls = dades.endolls
         periodesEndoll = dades.periodesEndoll
         propostesMoure = dades.propostesMoure
+        avuiEndolls = dades.avuiEndolls
         lecturesEndolls = repo.lecturesEndolls
         fonsW = dades.fons
         resumMes = dades.mes
@@ -683,6 +691,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         val referenciesLinia: Map<Long, Referencia>, val repetits: List<Repetit>,
         val obertes: Obertes, val senseNom: SenseNom, val resumSetmana: ResumSetmana?, val aparellsLinia: List<Aparell>,
         val endolls: List<Endoll>, val periodesEndoll: List<PeriodeEndoll>, val propostesMoure: List<PropostaMoure>,
+        val avuiEndolls: Ranquing?,
     )
 
     fun refresca() {

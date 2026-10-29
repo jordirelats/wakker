@@ -2,6 +2,12 @@
 
 package cat.jordi.wakker.ui
 
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.material.icons.outlined.Outlet
+import androidx.compose.material.icons.outlined.Bolt
+import androidx.compose.foundation.selection.selectable
 import android.app.LocaleConfig
 import android.app.LocaleManager
 import android.os.Build
@@ -211,6 +217,8 @@ private fun SeccioConnexio(vm: WakkerViewModel) {
     var provant by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var nomLinia by rememberSaveable { mutableStateOf(config.nomLinia) }
+    // El primer cop: amb un Shelly o només amb endolls (maqueta 20)
+    var ambEndolls by rememberSaveable { mutableStateOf(false) }
     var servidor by rememberSaveable { mutableStateOf(config.servidorNuvol) }
     var clau by remember { mutableStateOf(config.clauNuvol) }
     var idNuvol by rememberSaveable { mutableStateOf(config.idDispositiu) }
@@ -288,7 +296,12 @@ private fun SeccioConnexio(vm: WakkerViewModel) {
                         dismissButton = { androidx.compose.material3.TextButton(onClick = { perConfirmar = null }) { Text(stringResource(R.string.escaneig_cancella)) } },
                     )
                 }
+                // Com vols mesurar (maqueta 20): amb un Shelly o, de moment, només amb endolls
+                OpcioMode(Icons.Outlined.Bolt, stringResource(R.string.mode_shelly), stringResource(R.string.mode_shelly_text), !ambEndolls) { ambEndolls = false }
+                OpcioMode(Icons.Outlined.Outlet, stringResource(R.string.mode_endolls), stringResource(R.string.mode_endolls_text), ambEndolls) { ambEndolls = true }
             }
+            if (!config.configurat && ambEndolls) TargetaEndolls(vm, primerCop = true)
+            if (config.configurat || !ambEndolls) {
             Targeta {
                 TitolTargeta(stringResource(R.string.connecta_titol_shelly))
                 // Els que es troben, en una sola fila que es desplaça de costat: amb l'alçada fixa, la pàgina no es mou mentre
@@ -390,7 +403,8 @@ private fun SeccioConnexio(vm: WakkerViewModel) {
             }
             // Els endolls amb mesura (maqueta 19): es desen sols, sense el «Desa» de sota
             if (config.configurat) TargetaEndolls(vm)
-            if (!config.configurat) {
+            }
+            if (!config.configurat && !ambEndolls) {
                 Targeta {
                     TitolTargeta(stringResource(R.string.connecta_titol_preu))
                     Text(resumTarifa(config.tarifa), fontSize = 14.sp)
@@ -399,7 +413,13 @@ private fun SeccioConnexio(vm: WakkerViewModel) {
             }
             Spacer(Modifier.height(8.dp))
         }
-        Column(Modifier.padding(12.dp)) {
+        if (!config.configurat && ambEndolls) Column(Modifier.padding(12.dp)) {
+            // Només amb endolls: comença quan n'hi ha almenys un
+            Button(onClick = { config.nomesEndolls = true; vm.configuracioDesada() }, Modifier.fillMaxWidth(), enabled = vm.endolls.isNotEmpty()) {
+                Text(stringResource(R.string.connecta_comenca))
+            }
+            if (vm.endolls.isEmpty()) Nota(stringResource(R.string.mode_endolls_primer), Modifier.align(Alignment.CenterHorizontally))
+        } else Column(Modifier.padding(12.dp)) {
             Button(
                 onClick = {
                     // El Shelly provat és el de casa des d'ara; amb una adreça nova sense provar, la MAC s'aprèn a la primera lectura (1.1.3)
@@ -865,5 +885,24 @@ private fun TargetaExporta(vm: WakkerViewModel) {
         }
         if (vm.exportant) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
         vm.missatgeExport?.let { Text(it.text(), Modifier.padding(top = 4.dp), fontSize = 13.sp, color = Primari) }
+    }
+}
+
+/** Una de les dues maneres de mesurar, el primer cop (maqueta 20): la icona, el títol, una línia i si és la triada. */
+@Composable
+private fun OpcioMode(icona: ImageVector, titol: String, text: String, triada: Boolean, tria: () -> Unit) {
+    Surface(
+        Modifier.fillMaxWidth().padding(top = 8.dp).selectable(triada, role = Role.RadioButton, onClick = tria),
+        shape = RoundedCornerShape(14.dp), color = Superficie, border = BorderStroke(if (triada) 1.5.dp else 1.dp, if (triada) Primari else Vora),
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.Top) {
+            Cercle(icona, if (triada) EstatIcona.SAP else EstatIcona.NEUTRE, 34.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(titol, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(text, fontSize = 11.5.sp, color = Suau, lineHeight = 15.sp)
+            }
+            if (triada) Icon(Icons.Outlined.Check, null, Modifier.size(18.dp), tint = Primari)
+        }
     }
 }

@@ -91,6 +91,8 @@ import kotlin.math.sin
  */
 @Composable
 fun PantallaAra(vm: WakkerViewModel) {
+    // Sense Shelly, només amb endolls (maqueta 20)
+    if (vm.config.modeEndolls) return AraEndolls(vm)
     val l = vm.lectura
     val teLinia = vm.config.teLinia
     val info = vm.infoPreu

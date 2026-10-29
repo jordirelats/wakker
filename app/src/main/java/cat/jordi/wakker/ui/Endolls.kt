@@ -78,7 +78,7 @@ import kotlin.math.max
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun TargetaEndolls(vm: WakkerViewModel) {
+fun TargetaEndolls(vm: WakkerViewModel, primerCop: Boolean = false) {
     val config = vm.config
     val context = LocalContext.current
     var correu by rememberSaveable { mutableStateOf(config.tapoCorreu) }
@@ -187,7 +187,7 @@ fun TargetaEndolls(vm: WakkerViewModel) {
             val bo = m.id == R.string.endolls_afegit
             Text(m.text(context), Modifier.padding(top = 6.dp), fontSize = 13.sp, color = if (bo) Ok else DesconegutText)
         }
-        Nota(stringResource(R.string.endolls_es_desa_sol), Modifier.padding(top = 6.dp))
+        if (!primerCop) Nota(stringResource(R.string.endolls_es_desa_sol), Modifier.padding(top = 6.dp))
     }
 
     perTreure?.let { e ->
@@ -215,6 +215,15 @@ private fun FilaEndoll(vm: WakkerViewModel, e: Endoll, treu: () -> Unit) {
     val aparell = vm.aparells.firstOrNull { it.id == aparellId }
     val lectura = vm.lecturesEndolls[e.id]
     var obert by remember { mutableStateOf(false) }
+    // Un aparell que encara no hi és (el primer cop no n'hi ha cap): el full de «Tots els aparells…», amb «Afegeix-ne un de nou»
+    var triant by rememberSaveable { mutableStateOf(false) }
+    if (triant) {
+        TriaAparell(
+            e.nom, emptyList(), vm.aparells, false,
+            tria = { vm.posaEndollA(e.id, it.id); triant = false }, nou = { vm.posaEndollANou(e.id, it); triant = false },
+            tanca = { triant = false },
+        )
+    }
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Cercle(Icons.Outlined.Outlet, if (aparell != null) EstatIcona.SAP else EstatIcona.CAL, 32.dp)
         Spacer(Modifier.width(10.dp))
@@ -240,6 +249,7 @@ private fun FilaEndoll(vm: WakkerViewModel, e: Endoll, treu: () -> Unit) {
                 DropdownMenuItem(text = { Text(stringResource(R.string.endolls_treu), color = PuntaText) }, onClick = { obert = false; treu() })
                 HorizontalDivider()
                 DropdownMenuItem(text = { Text(stringResource(R.string.endolls_cap_aparell), color = Suau) }, onClick = { obert = false; vm.posaEndollA(e.id, null) })
+                DropdownMenuItem(text = { Text(stringResource(R.string.endolls_un_altre), color = Primari) }, onClick = { obert = false; triant = true })
                 vm.aparells.sortedBy { it.nom.lowercase() }.forEach { a ->
                     // Si l'aparell ja té un altre endoll, es diu: triar-lo li'l prendria
                     val altre = vm.endollDe[a.id]?.takeIf { it.id != e.id }

@@ -57,7 +57,7 @@ class Sincronitza(context: Context, params: WorkerParameters) : CoroutineWorker(
         if (repo.config.configurat) {
             runCatching { repo.sincronitza() }
             // L'historial dels endolls amb mesura (maqueta 19), si n'hi ha: només a casa (fora, les adreces són d'una altra xarxa)
-            if (runCatching { repo.lectura()?.origen }.getOrNull() == cat.jordi.wakker.shelly.Origen.LOCAL) runCatching { repo.sincronitzaEndolls() }
+            if (repo.config.modeEndolls || runCatching { repo.lectura()?.origen }.getOrNull() == cat.jordi.wakker.shelly.Origen.LOCAL) runCatching { repo.sincronitzaEndolls() }
             // Si WorkManager l'ha aturat (el temps s'ha acabat), no continua (1.1.3)
             if (isStopped) return Result.success()
             // Qui només té el núvol no sincronitza: el resum per hores de les dades velles, aquí

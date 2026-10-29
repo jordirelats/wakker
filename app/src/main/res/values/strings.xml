@@ -1376,4 +1376,20 @@
     <string name="endolls_despres">Després, busca l\'endoll o escriu-ne l\'adreça: el compte es desa quan un endoll l\'accepta.</string>
     <string name="endolls_canvia">Canvia</string>
     <string name="endolls_sense_mesura">Aquest Tapo no mesura el consum (un P100 o P105): cal un P110 o un P115.</string>
+    <!-- ===== Només amb endolls (maqueta 20, 1.3.0) ===== -->
+    <string name="mode_shelly">Amb un Shelly a la casa</string>
+    <string name="mode_shelly_text">Mesura tota la casa al quadre elèctric. Wakker hi troba cada aparell.</string>
+    <string name="mode_endolls">Només amb endolls, de moment</string>
+    <string name="mode_endolls_text">Cada aparell que té un endoll amb mesura (Tapo o Shelly Plug). La resta de la casa, quan hi posis el Shelly.</string>
+    <string name="mode_endolls_primer">Afegeix almenys un endoll per començar.</string>
+    <string name="mode_endolls_resta">La resta de la casa: sense Shelly, no es mesura.</string>
+    <!-- %1$d: quants endolls -->
+    <string name="mode_ara_estat">A casa · %1$d endolls, en directe</string>
+    <string name="mode_ara_cap">Cap endoll respon: només es llegeixen a casa</string>
+    <string name="mode_ara_suma">el que fan ara els endolls</string>
+    <!-- %1$s: el nom de l'endoll; %2$s: els kWh d'avui -->
+    <string name="mode_ara_fila">endoll «%1$s» · avui %2$s kWh</string>
+    <string name="mode_ara_sense_aparell">Cap endoll té aparell: digues-ho a la Configuració → Connexió.</string>
+    <string name="mode_ara_avis">Només es veu el que té endoll. Amb un Shelly al quadre, Wakker veurà tota la casa i aprendrà aquests aparells sols.</string>
+    <string name="endolls_un_altre">Un altre aparell…</string>
 </resources>

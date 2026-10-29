@@ -86,7 +86,7 @@ fun PantallaHistorial(vm: WakkerViewModel) {
         // Les barres, apilades amb els mateixos colors que el rànquing
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Superficie, border = BorderStroke(1.dp, Vora)) {
             Column(Modifier.padding(start = 6.dp, end = 10.dp, top = 10.dp, bottom = 8.dp)) {
-                val (apilades, llegenda) = barresApilades(r, vm.config.nomLinia)
+                val (apilades, llegenda) = barresApilades(r, vm.config.nomLinia, vm.config.modeEndolls)
                 GraficaBarres(apilades, llegenda)
                 if (r.aproximat) NotaAproximat(stringResource(R.string.historial_aproximat), vm.config.host.isNotBlank())
                 if (r.barres.any { it.hora.nuvol > 0 }) Nota(stringResource(R.string.historial_nuvol_nota), Modifier.padding(top = 4.dp, start = 4.dp))
@@ -97,15 +97,19 @@ fun PantallaHistorial(vm: WakkerViewModel) {
             Targeta {
                 TitolTargeta(stringResource(R.string.ranquing_titol))
                 LlistaRanquing(rq, vm.config.nomLinia) { vm.obreAparell(it) }
-                RestaConsum(rq, r.fonsW, vm.config.nomLinia, obreSempre = vm::obreEspera, obreSenseId = { vm.pestanya = Pestanya.PER_FER })
-                Text(
-                    stringResource(R.string.historial_fixos_peu, euros(r.euros.fixos)), Modifier.padding(top = 6.dp, start = 20.dp),
-                    fontSize = 11.sp, color = Suau,
-                )
+                // Només amb endolls (maqueta 20): la resta de la casa no es veu, i els fixos són de la casa
+                if (vm.config.modeEndolls) Text(stringResource(R.string.mode_endolls_resta), Modifier.padding(top = 6.dp, start = 20.dp), fontSize = 11.sp, color = Suau)
+                else {
+                    RestaConsum(rq, r.fonsW, vm.config.nomLinia, obreSempre = vm::obreEspera, obreSenseId = { vm.pestanya = Pestanya.PER_FER })
+                    Text(
+                        stringResource(R.string.historial_fixos_peu, euros(r.euros.fixos)), Modifier.padding(top = 6.dp, start = 20.dp),
+                        fontSize = 11.sp, color = Suau,
+                    )
+                }
             }
         }
         // De l'any no se'n busquen: caldria llegir-ne tots els minuts
-        if (vm.periode != Periode.ANY) MomentsPunta(vm)
+        if (vm.periode != Periode.ANY && !vm.config.modeEndolls) MomentsPunta(vm)
         Spacer(Modifier.height(4.dp))
     }
 }
@@ -116,7 +120,7 @@ fun PantallaHistorial(vm: WakkerViewModel) {
  * (el compressor, sense vegades) es reparteix proporcionalment entre les barres.
  */
 @Composable
-private fun barresApilades(r: Resum, nomLinia: String): Pair<List<BarraApilada>, List<Pair<String, androidx.compose.ui.graphics.Color>>> {
+private fun barresApilades(r: Resum, nomLinia: String, nomesEndolls: Boolean = false): Pair<List<BarraApilada>, List<Pair<String, androidx.compose.ui.graphics.Color>>> {
     val rq = r.ranquing
     val colors = listOf(Primari, PrimariMig, PrimariClar)
     val top = rq?.aparells?.filter { it.compressorW == null }?.take(3).orEmpty()
@@ -151,8 +155,11 @@ private fun barresApilades(r: Resum, nomLinia: String): Pair<List<BarraApilada>,
     val llegenda = buildList {
         top.forEachIndexed { i, f -> add(f.nom.ifBlank { nomLinia } to colors[i]) }
         if (rq != null && rq.aparells.size > top.size) add(stringResource(R.string.historial_llegenda_altres) to PrimariPal)
-        add(stringResource(R.string.ranquing_sempre) to GrisBarra)
-        add(stringResource(R.string.historial_llegenda_sense) to Desconegut)
+        // Només amb endolls (maqueta 20) no hi ha ni el sempre encès ni el que no se sap de qui és
+        if (!nomesEndolls) {
+            add(stringResource(R.string.ranquing_sempre) to GrisBarra)
+            add(stringResource(R.string.historial_llegenda_sense) to Desconegut)
+        }
     }
     return apilades to llegenda
 }

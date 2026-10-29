@@ -134,7 +134,7 @@ class Vigilancia : Service() {
             val permis = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
             val intent = Intent(context, Vigilancia::class.java)
-            if (c.configurat && c.avisPotencia && c.avisAlMoment && c.tarifa.limitKw != null && permis) {
+            if (c.teShelly && c.avisPotencia && c.avisAlMoment && c.tarifa.limitKw != null && permis) {
                 runCatching { ContextCompat.startForegroundService(context, intent) }
             } else {
                 context.stopService(intent)

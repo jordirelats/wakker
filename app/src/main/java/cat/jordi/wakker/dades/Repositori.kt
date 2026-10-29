@@ -363,6 +363,8 @@ class Repositori(val config: Config, private val bd: BaseDades) {
 
     /** El consum d'avui: kWh i euros (sense els fixos), i si una part és aproximada. */
     fun avui(): Avui {
+        // Només amb endolls (maqueta 20): el que han gastat avui els endolls
+        if (config.modeEndolls) resum(Periode.DIA).let { return Avui(it.total, it.euros.consum, false) }
         val desDe = iniciDia(LocalDate.now(zona))
         val hores = perHores(desDe, ara() + 60, fonsWh())
         return Avui(hores.sumOf { it.total }, Preus(desDe, ara()).euros(hores, 0.0).consum, bd.teAproximats(desDe, ara() + 60))
@@ -374,6 +376,7 @@ class Repositori(val config: Config, private val bd: BaseDades) {
      * mesos de l'any. Els fixos compten els dies amb dades fins avui. També el total del període d'abans, per comparar.
      */
     fun resum(periode: Periode, dia: LocalDate = LocalDate.now(zona)): Resum {
+        if (config.modeEndolls) return resumEndolls(periode, dia)
         val fons = fonsWh()
         val avui = LocalDate.now(zona)
         val primer = iniciPeriode(periode, dia)
@@ -447,8 +450,83 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         )
     }
 
+    /**
+     * L'energia de cada endoll per hores entre dos instants, amb l'aparell que tenia posat aquella hora: les hores de l'endoll
+     * i, de les que encara no té (l'hora d'ara, o un Shelly sense prou minuts), la suma dels seus minuts.
+     */
+    private fun horesEndolls(desDe: Long, finsA: Long): List<Triple<Long, Long, Double>> {
+        val periodes = bd.periodesEndoll()
+        val sortida = mutableListOf<Triple<Long, Long, Double>>()
+        for (e in bd.endolls()) {
+            val hores = bd.horesEndoll(e.id, desDe, finsA).toMutableList()
+            val desDeMinuts = max(desDe, (hores.maxOfOrNull { it.first } ?: (desDe - 3600)) + 3600)
+            if (desDeMinuts < finsA) {
+                bd.minutsEndoll(e.id, desDeMinuts, finsA - 1).groupBy { iniciHora(it.ts, zona) }
+                    .forEach { (h, m) -> hores += h to m.sumOf { it.wh } }
+            }
+            for ((h, wh) in hores) {
+                val p = periodes.lastOrNull { it.endollId == e.id && it.cobreix(h) } ?: continue
+                sortida += Triple(h, p.aparellId, wh)
+            }
+        }
+        return sortida
+    }
+
+    /**
+     * El resum d'un període només amb endolls (maqueta 20): cada hora, el que han gastat els endolls (tot va al «sense
+     * identificar» de l'hora, que és el que hi ha), les barres per aparells i el rànquing amb els aparells que tenen endoll.
+     * Sense fixos: són de la casa, i aquí no es veu la casa.
+     */
+    private fun resumEndolls(periode: Periode, dia: LocalDate): Resum {
+        val avui = LocalDate.now(zona)
+        val primer = iniciPeriode(periode, dia)
+        val fi = fiPeriode(periode, dia)
+        val desDe = iniciDia(primer)
+        val finsA = minOf(iniciDia(fi), ara() + 60)
+        val dades = if (finsA > desDe) horesEndolls(desDe, finsA) else emptyList()
+        val perHora = dades.groupBy { it.first }
+        val llista = perHora.map { (h, l) -> Hora(h, 0.0, 0.0, l.sumOf { it.third } / 1000) }.sortedBy { it.ts }
+        fun perAparell(t0: Long, t1: Long) = dades.filter { it.first in t0 until t1 }.groupBy { it.second }.mapValues { (_, l) -> l.sumOf { it.third } / 1000 }
+        fun suma(t0: Long, t1: Long) = Hora(t0, 0.0, 0.0, llista.filter { it.ts in t0 until t1 }.sumOf { it.desconegut })
+        val barres = when (periode) {
+            Periode.DIA -> (desDe until iniciDia(fi) step 3600L).map { ts ->
+                Barra("${Instant.ofEpochSecond(ts).atZone(zona).hour}", suma(ts, ts + 3600), perAparell(ts, ts + 3600))
+            }
+            Periode.SETMANA, Periode.MES -> generateSequence(primer) { it.plusDays(1) }.takeWhile { it.isBefore(fi) }.map { d ->
+                val etiqueta = if (periode == Periode.SETMANA) d.dayOfWeek.getDisplayName(TextStyle.SHORT, Idioma.locale).removeSuffix(".")
+                else d.dayOfMonth.toString()
+                Barra(etiqueta, suma(iniciDia(d), iniciDia(d.plusDays(1))), perAparell(iniciDia(d), iniciDia(d.plusDays(1))))
+            }.toList()
+            Periode.ANY -> (1..12).map { m ->
+                val mes = primer.withMonth(m)
+                Barra(
+                    mes.month.getDisplayName(TextStyle.NARROW_STANDALONE, Idioma.locale).uppercase(Idioma.locale),
+                    suma(iniciDia(mes), iniciDia(mes.plusMonths(1))), perAparell(iniciDia(mes), iniciDia(mes.plusMonths(1))),
+                )
+            }
+        }
+        val preus = Preus(desDe, finsA)
+        val euros = preus.euros(llista, 0.0)
+        val primerDades = bd.endolls().mapNotNull { bd.primeraHoraEndoll(it.id) ?: bd.primerMinutEndoll(it.id) }.minOrNull()
+            ?.let { Instant.ofEpochSecond(it).atZone(zona).toLocalDate() }
+        val anterior = mou(periode, primer, -1)
+        val actual = !avui.isBefore(primer) && avui.isBefore(fi)
+        val finsAnterior = if (actual) minOf(iniciDia(anterior) + (ara() - desDe), desDe) else desDe
+        val anteriorKwh = if (primerDades != null && !anterior.isBefore(primerDades))
+            horesEndolls(iniciDia(anterior), finsAnterior).sumOf { it.third } / 1000 else null
+        val aparells = bd.aparells().associateBy { it.id }
+        val files = dades.groupBy { it.second }.mapNotNull { (id, l) ->
+            val a = aparells[id] ?: return@mapNotNull null
+            FilaRanquing(a, a.nom, l.sumOf { it.third } / 1000, l.sumOf { it.third / 1000 * preus.de(it.first) }, 0, 0, false, endoll = true)
+        }.filter { it.kwh >= 0.005 }.sortedByDescending { it.kwh }
+        val total = llista.sumOf { it.desconegut }
+        val rq = Ranquing(files, total, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0)
+        return Resum(barres, 0.0, 0.0, total, null, euros, false, primer, fi, actual, anteriorKwh, primerDades, rq)
+    }
+
     /** El consum d'aquest mes, des del dia 1, amb els fixos dels dies que han passat. */
     fun resumMes(): Resum {
+        if (config.modeEndolls) return resumEndolls(Periode.MES, LocalDate.now(zona))
         val fons = fonsWh()
         val avui = LocalDate.now(zona)
         val desDe = iniciDia(avui.withDayOfMonth(1))

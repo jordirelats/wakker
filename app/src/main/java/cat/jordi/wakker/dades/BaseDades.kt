@@ -33,7 +33,7 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO)
     companion object {
         /** El fitxer de la base de dades (la còpia de seguretat el substitueix en tornar a obrir l'app). */
         const val NOM = "wakker.db"
-        const val VERSIO = 10
+        const val VERSIO = 11
     }
 
 
@@ -112,7 +112,7 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO)
         db.execSQL("CREATE INDEX vegades_ts ON vegades (ts)")
         db.execSQL(
             """CREATE TABLE etiquetes (id INTEGER PRIMARY KEY AUTOINCREMENT, canal INTEGER NOT NULL, des_de INTEGER NOT NULL,
-               fins_a INTEGER NOT NULL, aparell INTEGER NOT NULL, no INTEGER NOT NULL DEFAULT 0)"""
+               fins_a INTEGER NOT NULL, aparell INTEGER NOT NULL, no INTEGER NOT NULL DEFAULT 0, sessio TEXT)"""
         )
     }
 
@@ -170,6 +170,8 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO)
         if (oldVersion < 9) creaHores(db)
         // Versió 10 (maqueta 19): els endolls amb mesura
         if (oldVersion < 10) creaEndolls(db)
+        // Versió 11 (maqueta 21): una etiqueta pot ser una estona d'inici a fi («Ara l'engego… L'he apagat»), amb el que no compta
+        if (oldVersion in 8..10) db.execSQL("ALTER TABLE etiquetes ADD COLUMN sessio TEXT")
         if (oldVersion < 8) {
             creaVegades(db)
             // El que ja s'havia ensenyat o respost abans de la 0.26 passa a ser etiquetes: el seu consum és d'aquell aparell.
@@ -669,12 +671,12 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO)
 
     // ---------- Les vegades i les etiquetes (maqueta 13) ----------
 
-    /** Fora les vegades des de [desDe] i a dins les noves (ja amb l'aparell de qui són). */
-    fun substitueixVegades(desDe: Long, noves: List<Vegada>) {
+    /** Fora les vegades de [desDe] a [finsA] i a dins les noves (ja amb l'aparell de qui són). */
+    fun substitueixVegades(desDe: Long, noves: List<Vegada>, finsA: Long = Long.MAX_VALUE) {
         val db = writableDatabase
         db.beginTransaction()
         try {
-            db.delete("vegades", "ts >= ?", arrayOf(desDe.toString()))
+            db.delete("vegades", "ts >= ? AND ts < ?", arrayOf(desDe.toString(), finsA.toString()))
             val sql = db.compileStatement(
                 "INSERT INTO vegades (canal, ts, fi, minuts, w, kwh, variacio, arrencada, aparell, com) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
             )
@@ -770,11 +772,16 @@ class BaseDades(context: Context) : SQLiteOpenHelper(context, NOM, null, VERSIO)
     fun desaEtiqueta(e: Etiqueta): Long =
         writableDatabase.insert("etiquetes", null, ContentValues().apply {
             put("canal", e.canal); put("des_de", e.desDe); put("fins_a", e.finsA); put("aparell", e.aparellId); put("no", if (e.no) 1 else 0)
+            put("sessio", e.sessio?.let { Sessio.text(it) })
         })
 
     fun etiquetes(): List<Etiqueta> =
-        readableDatabase.rawQuery("SELECT canal, des_de, fins_a, aparell, no, id FROM etiquetes", null).use { c ->
-            buildList { while (c.moveToNext()) add(Etiqueta(c.getInt(0), c.getLong(1), c.getLong(2), c.getLong(3), c.getInt(4) != 0, c.getLong(5))) }
+        readableDatabase.rawQuery("SELECT canal, des_de, fins_a, aparell, no, id, sessio FROM etiquetes", null).use { c ->
+            buildList {
+                while (c.moveToNext()) add(
+                    Etiqueta(c.getInt(0), c.getLong(1), c.getLong(2), c.getLong(3), c.getInt(4) != 0, c.getLong(5), if (c.isNull(6)) null else Sessio.llegeix(c.getString(6)))
+                )
+            }
         }
 
     /** Fora unes etiquetes i unes mostres concretes (en desfer una resposta, o treure'n una de la fitxa). */

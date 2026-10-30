@@ -17,7 +17,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -87,6 +91,8 @@ fun PantallaFitxa(vm: WakkerViewModel) {
                         fontSize = 12.sp, color = Suau,
                     )
                 }
+                // Editar-lo (maqueta 21): el que n'ha après es queda
+                IconButton(onClick = { vm.pantalla = Pantalla.EDITA }) { Icon(Icons.Outlined.Edit, stringResource(R.string.edita_titol), tint = Primari) }
             }
             // Aquest mes: el que ha mesurat l'endoll si en té (maqueta 19); si no, les vegades (o la nevera, el compressor)
             val mesura = f?.endoll?.mesura
@@ -241,6 +247,7 @@ private fun FilaEnsenyat(e: Ensenyat, treu: () -> Unit) {
         // Tots els cops (de cada un n'hi ha l'etiqueta; mostres, només dels 12 últims)
         OrigenEnsenyat.REPETIT -> maxOf(e.etiquetes.size, e.mostres.size).let { pluralStringResource(R.plurals.fitxa_ensenyat_repetit, it, it) }
         OrigenEnsenyat.RESPOSTA -> stringResource(R.string.fitxa_ensenyat_resposta)
+        OrigenEnsenyat.SESSIO -> stringResource(R.string.fitxa_ensenyat_sessio, w)
     }
     Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {

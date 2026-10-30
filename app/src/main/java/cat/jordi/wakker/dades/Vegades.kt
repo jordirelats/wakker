@@ -28,7 +28,15 @@ enum class Com(@androidx.annotation.StringRes val textId: Int) {
  * [aparellId] o, amb [no], que no ho era («No era ell»). Un instant ([desDe] = [finsA]) és quan es va encendre: val per a
  * la vegada que comença a menys de 3 minuts. Una estona val per a les vegades que cobreix almenys a la meitat.
  */
-data class Etiqueta(val canal: Int, val desDe: Long, val finsA: Long, val aparellId: Long, val no: Boolean = false, val id: Long = 0)
+data class Etiqueta(
+    val canal: Int, val desDe: Long, val finsA: Long, val aparellId: Long, val no: Boolean = false, val id: Long = 0,
+    /**
+     * Una estona d'inici a fi (maqueta 21, «Ara l'engego… L'he apagat»): tota l'estona és una sola vegada de l'aparell, menys
+     * aquestes estones (inici i fi de les vegades de dins que no eren seves), que es queden com a vegades a part. Null: una
+     * etiqueta de les d'abans.
+     */
+    val sessio: List<Pair<Long, Long>>? = null,
+)
 
 /** Una vegada desada: un episodi d'un canal, amb l'aparell (si se sap) i com se sap. */
 data class Vegada(
@@ -50,6 +58,8 @@ data class Vegada(
  */
 internal fun encavalca(v: Vegada, e: Etiqueta): Long {
     val fi = v.fi + 60
+    // Una estona d'inici a fi només és de la vegada que en fa l'estona sencera: el que s'hi encén a sobre no és seu
+    if (e.sessio != null) return if (v.ts == e.desDe && fi >= e.finsA + 1 - 120) min(fi, e.finsA + 1) - v.ts else 0
     if (e.desDe == e.finsA) return if (kotlin.math.abs(e.desDe - v.ts) <= 180) 1 else 0
     val comu = max(0, min(fi, e.finsA + 1) - max(v.ts, e.desDe))
     return if (comu * 2 >= fi - v.ts && (fi - v.ts) * 4 >= e.finsA + 1 - e.desDe) comu else 0
@@ -107,7 +117,8 @@ fun assigna(
         if (a.id in no) return@filter false
         val potencia = if (r.wMin != null) v.w in r.min * 0.85..r.max * 1.15 else v.w in r.w / 1.3..r.w * 1.3
         // Una vegada que encara dura (una càrrega del cotxe que fa una hora) no se sap quant durarà: només el màxim
-        val durada = r.duradaMin?.let { d -> if (oberta) v.minuts <= d * 3 + 1 else v.minuts.toDouble() in (d / 3 - 1)..(d * 3 + 1) } ?: true
+        val durada = r.duradaMin?.let { d -> if (oberta) v.minuts <= d * 3 + 1 else v.minuts.toDouble() in (d / 3 - 1)..(d * 3 + 1) }
+            ?: (oberta || r.minMinuts == null || v.minuts >= r.minMinuts)
         val f = v.forma
         val forma = r.forma == null || f == null || (f == Forma.POLSA) == (r.forma == Forma.POLSA)
         potencia && durada && forma
@@ -116,7 +127,7 @@ fun assigna(
     // altre aparell, és de l'estona
     val cobreix = {
         etiquetes.filter { e ->
-            e.canal == v.canal && !e.no && e.aparellId !in exclosos && e.aparellId !in no && e.desDe != e.finsA &&
+            e.canal == v.canal && !e.no && e.sessio == null && e.aparellId !in exclosos && e.aparellId !in no && e.desDe != e.finsA &&
                 e.desDe <= v.ts && e.finsA + 1 >= v.fi + 60
         }.maxByOrNull { it.finsA - it.desDe }?.let { it.aparellId to Com.ENSENYAT } ?: (null to null)
     }

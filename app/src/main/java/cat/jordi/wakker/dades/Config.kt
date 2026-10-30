@@ -135,6 +135,23 @@ class Config(context: Context) {
         set(v) = p.edit().putLong("vegades_fins", v).apply()
 
     /**
+     * L'aparell que s'està ensenyant d'inici a fi (maqueta 21; 0: cap), des de quan, fins a quan (0: encara és engegat) i la
+     * base de la casa d'abans d'engegar-lo (W, per dir què hi posa ara). Es desa perquè duri hores, amb l'app tancada.
+     */
+    var sessioAparell: Long
+        get() = p.getLong("sessio_aparell", 0)
+        set(v) = p.edit().putLong("sessio_aparell", v).apply()
+    var sessioInici: Long
+        get() = p.getLong("sessio_inici", 0)
+        set(v) = p.edit().putLong("sessio_inici", v).apply()
+    var sessioFi: Long
+        get() = p.getLong("sessio_fi", 0)
+        set(v) = p.edit().putLong("sessio_fi", v).apply()
+    var sessioBase: Double
+        get() = p.getFloat("sessio_base", -1f).toDouble()
+        set(v) = p.edit().putFloat("sessio_base", v.toFloat()).apply()
+
+    /**
      * Amb quina manera de trobar-les s'han buscat les vegades desades: si una versió de l'app les troba d'una altra manera
      * (la 0.28 separa el que s'encén a sobre d'una vegada llarga), es tornen a buscar totes.
      */

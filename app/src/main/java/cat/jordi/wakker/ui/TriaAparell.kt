@@ -59,18 +59,20 @@ import cat.jordi.wakker.dades.Funcionament
 fun TriaAparell(
     subtitol: String, suggerits: List<Aparell>, tots: List<Aparell>, teLinia: Boolean,
     tria: (Aparell) -> Unit, nou: (Aparell) -> Unit, tanca: () -> Unit, senseLinia: Boolean = false, nomLinia: String = "",
+    /** Per contestar de qui era una vegada (si no, per triar un aparell, com a «Ara l'engego»: maqueta 21). */
+    perVegada: Boolean = true,
 ) {
     val estat = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var afegint by rememberSaveable { mutableStateOf(false) }
     ModalBottomSheet(onDismissRequest = tanca, sheetState = estat, containerColor = Superficie) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 16.dp).imePadding()) {
             if (afegint) {
-                AparellNou(subtitol, enrere = { afegint = false }) { a ->
+                AparellNou(subtitol, perVegada, enrere = { afegint = false }) { a ->
                     nou(a)
                     tanca()
                 }
             } else {
-                Llista(subtitol, suggerits, tots, teLinia, senseLinia, nomLinia, { a -> tria(a); tanca() }) { afegint = true }
+                Llista(subtitol, suggerits, tots, teLinia, senseLinia, nomLinia, perVegada, { a -> tria(a); tanca() }) { afegint = true }
             }
         }
     }
@@ -79,7 +81,7 @@ fun TriaAparell(
 @Composable
 private fun Llista(
     subtitol: String, suggerits: List<Aparell>, tots: List<Aparell>, teLinia: Boolean, senseLinia: Boolean, nomLinia0: String,
-    tria: (Aparell) -> Unit, afegeix: () -> Unit,
+    perVegada: Boolean, tria: (Aparell) -> Unit, afegeix: () -> Unit,
 ) {
     val nomLinia = nomLinia0.ifBlank { stringResource(R.string.pinca2_xip) }
     var cerca by rememberSaveable { mutableStateOf("") }
@@ -89,7 +91,7 @@ private fun Llista(
     val idsSuggerits = suggerits.map { it.id }.toSet()
     val primers = suggerits.filter(::hiEs)
     val resta = tots.filter { it.id !in idsSuggerits && hiEs(it) }.sortedBy { pla(it.nom) }
-    Text(stringResource(R.string.tria_que_era), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
+    Text(stringResource(if (perVegada) R.string.tria_que_era else R.string.tria_quin), fontSize = 20.sp, fontWeight = FontWeight.SemiBold)
     Text(subtitol, fontSize = 13.sp, color = Suau)
     OutlinedTextField(
         cerca, { cerca = it }, Modifier.fillMaxWidth().padding(top = 10.dp), placeholder = { Text(stringResource(R.string.tria_busca)) },
@@ -114,7 +116,7 @@ private fun Llista(
             Spacer(Modifier.width(10.dp))
             Column {
                 Text(stringResource(R.string.tria_nou), fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Primari)
-                Text(stringResource(R.string.tria_nou_text), fontSize = 12.sp, color = Suau)
+                Text(stringResource(if (perVegada) R.string.tria_nou_text else R.string.tria_nou_text_curt), fontSize = 12.sp, color = Suau)
             }
         }
     }
@@ -141,7 +143,7 @@ private fun FilaAparell(a: Aparell, teLinia: Boolean, nomLinia: String, tria: ()
 
 /** Un aparell nou, sense sortir de la pregunta: el tipus (amb el mateix cercador que Afegir) i el nom. */
 @Composable
-private fun AparellNou(subtitol: String, enrere: () -> Unit, desa: (Aparell) -> Unit) {
+private fun AparellNou(subtitol: String, perVegada: Boolean, enrere: () -> Unit, desa: (Aparell) -> Unit) {
     val context = LocalContext.current
     var categoria by rememberSaveable { mutableStateOf<Categoria?>(null) }
     var nom by rememberSaveable { mutableStateOf("") }
@@ -162,11 +164,11 @@ private fun AparellNou(subtitol: String, enrere: () -> Unit, desa: (Aparell) -> 
         }
         Text(stringResource(R.string.tria_nom_pregunta), fontSize = 14.sp, fontWeight = FontWeight.Medium)
         OutlinedTextField(nom, { nom = it; nomTocat = true }, Modifier.fillMaxWidth(), label = { Text(stringResource(R.string.tria_nom)) }, singleLine = true)
-        Nota(stringResource(R.string.tria_nou_nota))
+        if (perVegada) Nota(stringResource(R.string.tria_nou_nota))
         val c = categoria
         Button(
             onClick = { if (c != null) desa(Aparell(nom = nom.trim(), categoria = c, font = Font.TIPIC, kwhAny = c.kwhAnyTipic)) },
             Modifier.fillMaxWidth(), enabled = c != null && nom.isNotBlank(),
-        ) { Text(stringResource(R.string.tria_afegeix)) }
+        ) { Text(stringResource(if (perVegada) R.string.tria_afegeix else R.string.tria_afegeix_curt)) }
     }
 }

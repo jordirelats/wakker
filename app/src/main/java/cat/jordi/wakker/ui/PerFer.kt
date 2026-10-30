@@ -29,6 +29,10 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.PlayCircleOutline
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.NotificationsOff
 import androidx.compose.material.icons.outlined.PowerSettingsNew
@@ -115,6 +119,8 @@ fun PantallaPerFer(vm: WakkerViewModel) {
                 }
             }
         }
+        // L'aparell que s'ensenya d'inici a fi, o l'estona per revisar (maqueta 21)
+        TargetaSessio(vm)
         // Els endolls que ja es poden moure (maqueta 19)
         vm.propostesMoure.forEach { p -> key("e${p.endoll.id}") { TargetaMoure(vm, p) } }
         // El que més gasta i encara no té nom (maqueta 15), cada vegada una targeta
@@ -136,27 +142,75 @@ fun PantallaPerFer(vm: WakkerViewModel) {
             }
         }
 
-        // Ensenyar-li tu: una estona passada (maqueta 8) o en directe
-        Surface(Modifier.fillMaxWidth().padding(top = 4.dp), shape = RoundedCornerShape(16.dp), color = Fons, border = BorderStroke(1.dp, Vora)) {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-                Text(stringResource(R.string.perfer_ensenya), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(stringResource(R.string.perfer_ensenya_text), fontSize = 12.sp, color = Suau)
-                Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedButton(onClick = { vm.oblidaEstona(); vm.pantalla = Pantalla.PASSAT }, Modifier.weight(1f), enabled = vm.aparellsAEntrenar.isNotEmpty(), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)) {
-                        Icon(Icons.Outlined.History, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.perfer_estona), fontSize = 12.5.sp, lineHeight = 15.sp)
-                    }
-                    OutlinedButton(onClick = { directe = !directe }, Modifier.weight(1f), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)) {
-                        Icon(Icons.Outlined.PowerSettingsNew, null, Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(stringResource(R.string.perfer_directe), fontSize = 12.5.sp, lineHeight = 15.sp)
-                    }
-                }
-                if (directe) EnDirecte(vm)
-            }
-        }
+        // Ensenyar-li tu (maqueta 21): d'inici a fi, el salt de 20 segons, ja engegat, una estona passada, o què hi ha encès ara
+        EnsenyaLiTu(vm, directe) { directe = !directe }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/**
+ * «Ensenya-li tu» (maqueta 21): «Ara l'engego» (d'inici a fi, de minuts a hores), «Un salt de 20 segons» (com fins ara),
+ * «Ja està engegat» (des d'una hora d'avui), «Una estona passada» i «Què hi ha encès ara?».
+ */
+@Composable
+private fun EnsenyaLiTu(vm: WakkerViewModel, directe: Boolean, canviaDirecte: () -> Unit) {
+    // Quin aparell s'engega ara (o ja és engegat); per a «Ja està engegat», després l'hora
+    var triant by rememberSaveable { mutableStateOf<String?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val candidats = (vm.aparellsAEntrenar + vm.aparellsLinia).filter { it.funciona != Funcionament.SEMPRE }.distinctBy { it.id }
+    val hiHaSessio = vm.sessio != null || vm.comencant
+    fun desDeQuan(a: Aparell) {
+        val ara = java.time.LocalTime.now()
+        android.app.TimePickerDialog(context, { _, h, m ->
+            val zona = ZoneId.systemDefault()
+            var quan = java.time.LocalDate.now().atTime(h, m).atZone(zona)
+            // Una hora més tard que ara és d'ahir (engegat abans de mitjanit)
+            if (quan.toEpochSecond() > System.currentTimeMillis() / 1000) quan = quan.minusDays(1)
+            vm.comencaSessio(a, quan.toEpochSecond())
+        }, (ara.hour - 1).coerceAtLeast(0), ara.minute, true).show()
+    }
+    Surface(Modifier.fillMaxWidth().padding(top = 4.dp), shape = RoundedCornerShape(16.dp), color = Fons, border = BorderStroke(1.dp, Vora)) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+            Text(stringResource(R.string.perfer_ensenya), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(stringResource(R.string.perfer_ensenya_text), fontSize = 12.sp, color = Suau)
+            Spacer(Modifier.height(4.dp))
+            FilaEnsenya(Icons.Outlined.PlayCircleOutline, stringResource(R.string.ensenya_ara), stringResource(R.string.ensenya_ara_text), !hiHaSessio && candidats.isNotEmpty()) { triant = "ara" }
+            FilaEnsenya(Icons.Outlined.PowerSettingsNew, stringResource(R.string.ensenya_salt), stringResource(R.string.ensenya_salt_text), true, obert = directe, onClick = canviaDirecte)
+            if (directe) EnDirecte(vm)
+            FilaEnsenya(Icons.Outlined.Schedule, stringResource(R.string.ensenya_ja), stringResource(R.string.ensenya_ja_text), !hiHaSessio && candidats.isNotEmpty()) { triant = "ja" }
+            FilaEnsenya(Icons.Outlined.History, stringResource(R.string.perfer_estona), stringResource(R.string.ensenya_estona_text), vm.aparellsAEntrenar.isNotEmpty()) {
+                vm.oblidaEstona()
+                vm.pantalla = Pantalla.PASSAT
+            }
+            FilaEnsenya(Icons.Outlined.Checklist, stringResource(R.string.ensenya_marca), stringResource(R.string.ensenya_marca_text), candidats.isNotEmpty(), onClick = vm::obreMarca)
+            if (hiHaSessio) Nota(stringResource(R.string.ensenya_ja_n_hi_ha), Modifier.padding(top = 4.dp))
+        }
+    }
+    triant?.let { mode ->
+        TriaAparell(
+            stringResource(if (mode == "ara") R.string.ensenya_ara_quin else R.string.ensenya_ja_quin), emptyList(), candidats, vm.config.teLinia,
+            tria = { a -> if (mode == "ara") vm.comencaSessio(a) else desDeQuan(a) },
+            nou = { a -> if (mode == "ara") vm.comencaSessio(a) else desDeQuan(a) },
+            tanca = { triant = null }, nomLinia = vm.config.nomLinia, perVegada = false,
+        )
+    }
+}
+
+@Composable
+private fun FilaEnsenya(
+    icona: androidx.compose.ui.graphics.vector.ImageVector, titol: String, text: String, actiu: Boolean, obert: Boolean = false, onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(enabled = actiu, onClick = onClick).padding(vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icona, null, Modifier.size(20.dp), tint = if (actiu) Primari else Suau)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(titol, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (actiu) TextPrincipal else Suau)
+            Text(text, fontSize = 12.sp, color = Suau, lineHeight = 16.sp)
+        }
+        Icon(if (obert) Icons.Outlined.ExpandLess else Icons.Outlined.ChevronRight, null, Modifier.size(18.dp), tint = Suau)
     }
 }
 

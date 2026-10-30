@@ -27,6 +27,8 @@ import cat.jordi.wakker.dades.Aparell
 import cat.jordi.wakker.dades.Avui
 import cat.jordi.wakker.dades.ConsellLinia
 import cat.jordi.wakker.dades.Estona
+import cat.jordi.wakker.dades.EstonaSessio
+import cat.jordi.wakker.dades.Repositori
 import cat.jordi.wakker.dades.InfoPreu
 import cat.jordi.wakker.dades.Periode
 import cat.jordi.wakker.dades.Pic
@@ -74,7 +76,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
-enum class Pantalla { CONNECTA, PRINCIPAL, AFEGIR, QUESTIONARI, PREU, PASSAT, APARELL, ESPERA }
+enum class Pantalla { CONNECTA, PRINCIPAL, AFEGIR, QUESTIONARI, PREU, PASSAT, APARELL, ESPERA, EDITA, SESSIO, MARCA }
 
 enum class Pestanya(@StringRes val nomId: Int) {
     ARA(R.string.pestanya_ara), APARELLS(R.string.pestanya_aparells), PER_FER(R.string.pestanya_per_fer), HISTORIAL(R.string.pestanya_historial)
@@ -126,6 +128,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         when {
             pantalla == Pantalla.CONNECTA && seccioConfig != null && config.configurat -> seccioConfig = null
             pantalla == Pantalla.PREU && preuDesDeConfig -> { preuDesDeConfig = false; pantalla = Pantalla.CONNECTA }
+            pantalla == Pantalla.EDITA -> pantalla = Pantalla.APARELL
             else -> pantalla = Pantalla.PRINCIPAL
         }
     }
@@ -569,6 +572,7 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         fonsW = dades.fons
         resumMes = dades.mes
         aparells = dades.aparells
+        llegeixSessio()
         if (p == periode && d == diaHistorial) {
             resum = dades.resum
             pics = dades.pics
@@ -918,6 +922,181 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
         }
     }
 
+    // ---------- Ensenyar d'inici a fi i què hi ha encès (maqueta 21) ----------
+
+    /** L'aparell que s'està ensenyant d'inici a fi: des de quan, fins a quan (null: encara és engegat) i la base de la casa. */
+    data class SessioEnMarxa(val aparell: Aparell, val desDe: Long, val finsA: Long?, val base: Double?)
+
+    var sessio by mutableStateOf<SessioEnMarxa?>(null)
+        private set
+
+    init {
+        viewModelScope.launch {
+            llegeixSessio(withContext(Dispatchers.IO) { repo.aparells() })
+            // Si s'està ensenyant un aparell d'inici a fi, la notificació hi ha de ser (Android 14 la deixa treure)
+            sessio?.takeIf { it.finsA == null }?.let { Avisos.avisaSessio(getApplication(), it.aparell.nom, it.desDe) }
+        }
+    }
+
+    private fun llegeixSessio(llista: List<Aparell> = aparells) {
+        val c = config
+        sessio = llista.firstOrNull { it.id == c.sessioAparell }?.let {
+            SessioEnMarxa(it, c.sessioInici, c.sessioFi.takeIf { f -> f > 0 }, c.sessioBase.takeIf { b -> b >= 0 })
+        }
+    }
+
+    /**
+     * «Ara l'engego» ([desDe] null) o «Ja està engegat» des de [desDe]. Primer es recullen els minuts d'abans (si és a casa),
+     * per saber la base de la casa; si encara no hi són, la de les lectures dels últims segons.
+     */
+    /** S'està començant una estona: un segon toc no en comença una altra a sobre. */
+    var comencant by mutableStateOf(false)
+        private set
+
+    fun comencaSessio(a: Aparell, desDe: Long? = null) {
+        if (comencant || sessio != null) return
+        comencant = true
+        val ara = System.currentTimeMillis()
+        val viuAbans = if (desDe == null) medianaDes(ara - 15_000) else null
+        val liniaAra = lectura?.linia?.w
+        viewModelScope.launch {
+            try {
+                withContext(Dispatchers.IO) {
+                    if (lectura?.origen != Origen.NUVOL) runCatching { repo.sincronitza() }
+                    // Un aparell nou, des de «Tots els aparells…» → «Afegeix-ne un de nou»
+                    val id = if (a.id == 0L) repo.afegeixAparell(a) else a.id
+                    repo.comencaSessio(id, desDe ?: (ara / 1000))
+                    if (config.sessioBase < 0) {
+                        val linia = config.teLinia && a.linia && !a.nom.equals(config.nomLinia, ignoreCase = true)
+                        (if (linia) liniaAra else viuAbans)?.let { config.sessioBase = it }
+                    }
+                }
+                refrescaAra()
+                llegeixSessio()
+            } finally {
+                comencant = false
+            }
+            sessio?.let { Avisos.avisaSessio(getApplication(), it.aparell.nom, it.desDe) }
+        }
+    }
+
+    /** El que l'aparell que s'ensenya posa ara per sobre de la base de la casa (W), si se sap. */
+    fun wSessio(l: Lectura?): Double? {
+        val s = sessio ?: return null
+        val base = s.base ?: return null
+        l ?: return null
+        val linia = config.teLinia && s.aparell.linia && !s.aparell.nom.equals(config.nomLinia, ignoreCase = true)
+        return ((if (linia) l.linia?.w ?: 0.0 else resta(l)) - base).coerceAtLeast(0.0)
+    }
+
+    /** L'estona acabada que es revisa abans de desar-la, i si s'està buscant. */
+    var estonaSessio by mutableStateOf<EstonaSessio?>(null)
+        private set
+    var buscantSessio by mutableStateOf(false)
+        private set
+
+    /** «L'he apagat» (des de l'app o la notificació): l'estona acaba ara, i s'obre per revisar-la. */
+    fun acabaSessio() {
+        repo.acabaSessio()
+        Avisos.treuSessio(getApplication())
+        viewModelScope.launch {
+            llegeixSessio(withContext(Dispatchers.IO) { repo.aparells() })
+            if (sessio != null) obreSessio()
+        }
+    }
+
+    /** Obre l'estona acabada: primer es recullen els minuts que falten (si és a casa). */
+    fun obreSessio() {
+        pantalla = Pantalla.SESSIO
+        viewModelScope.launch {
+            buscantSessio = true
+            estonaSessio = withContext(Dispatchers.IO) {
+                if (lectura?.origen != Origen.NUVOL) runCatching { repo.sincronitza() }
+                runCatching { repo.estonaSessio() }.getOrNull()
+            }
+            buscantSessio = false
+        }
+    }
+
+    /** Desa l'estona, amb les vegades de [fora] fora (no eren seves), i torna a «Per fer». */
+    fun desaSessio(e: EstonaSessio, fora: List<Vegada>) {
+        // Si se n'està desant una altra cosa, aquest toc no faria res: que no se'n vagi de la pantalla
+        if (desant) return
+        val nom = aparells.firstOrNull { it.id == e.aparellId }?.nom.orEmpty()
+        desa(TextRecurs(R.string.desfer_sessio, nom)) { repo.desaSessio(e, fora) }
+        estonaSessio = null
+        sessio = null
+        pantalla = Pantalla.PRINCIPAL
+        pestanya = Pestanya.PER_FER
+    }
+
+    /** «Cancel·la» o «Descarta»: fora l'estona, sense desar-ne res. */
+    fun oblidaSessio() {
+        repo.oblidaSessio()
+        Avisos.treuSessio(getApplication())
+        estonaSessio = null
+        sessio = null
+        if (pantalla == Pantalla.SESSIO) {
+            pantalla = Pantalla.PRINCIPAL
+            pestanya = Pestanya.PER_FER
+        }
+    }
+
+    /** El que ha sortit de marcar què hi ha encès (null: encara no s'ha desat); [marcaFora]: no és a casa, no es pot. */
+    var resultatMarca by mutableStateOf<List<Repositori.FilaMarca>?>(null)
+        private set
+    var marcaFora by mutableStateOf(false)
+        private set
+    var marcant by mutableStateOf(false)
+        private set
+
+    fun obreMarca() {
+        resultatMarca = null
+        marcaFora = false
+        pantalla = Pantalla.MARCA
+    }
+
+    /** «Què hi ha encès ara?»: compara els aparells marcats amb el que veu Wakker, i aprèn el que no tenia nom. */
+    fun marcaEncesos(ids: Set<Long>) {
+        val l = lectura ?: run { marcaFora = true; return }
+        if (marcant) return
+        marcant = true
+        viewModelScope.launch {
+            try {
+                val r = withContext(Dispatchers.IO) {
+                    if (l.origen != Origen.NUVOL) runCatching { repo.sincronitza() }
+                    repo.marcaEncesos(ids, l)
+                }
+                if (r == null) {
+                    marcaFora = true
+                } else {
+                    resultatMarca = r.first
+                    r.second?.let { desfer = AvisDesfer(TextRecurs(R.string.desfer_marca), it) }
+                }
+            } finally {
+                marcant = false
+            }
+            refrescaAra()
+        }
+    }
+
+    /** Desa els canvis d'un aparell (nom, tipus, marca, model, potència, l'any, com funciona, on està connectat). */
+    fun editaAparell(abans: Aparell, ara: Aparell) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                // Posar-lo o treure'l de la pinça 2 també treu el que n'havia après de la línia
+                if (abans.linia != ara.linia) repo.posaALinia(abans, ara.linia)
+                repo.desaAparell(ara)
+                if (abans.linia != ara.linia) {
+                    repo.aprenLinia(forca = true)
+                    repo.actualitzaRepetits(forca = true)
+                }
+            }
+            pantalla = Pantalla.APARELL
+            refrescaAra()
+        }
+    }
+
     /** Les dades per hores del núvol (maqueta 11): si s'està omplint, i què se n'ha recuperat (dies, kWh, des de quan). */
     var omplintNuvol by mutableStateOf(false)
         private set
@@ -973,6 +1152,11 @@ class WakkerViewModel(app: Application, private val desat: SavedStateHandle) : A
 
     fun esborraAparell(id: Long) {
         if (pantalla == Pantalla.APARELL) pantalla = Pantalla.PRINCIPAL
+        // Si l'estava ensenyant d'inici a fi, la notificació també se'n va
+        if (sessio?.aparell?.id == id) {
+            Avisos.treuSessio(getApplication())
+            sessio = null
+        }
         // El que es podia desfer d'abans ja no té sentit: tornaria a posar coses d'un aparell que no hi és
         desfer = null
         viewModelScope.launch {

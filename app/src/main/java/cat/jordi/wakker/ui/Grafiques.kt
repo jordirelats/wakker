@@ -46,13 +46,13 @@ import java.time.ZoneId
 import kotlin.math.ceil
 
 /** Un pas rodó per a l'eix (en les unitats que sigui), perquè hi hagi entre 3 i 5 ratlles. */
-private fun pas(maxim: Double): Double {
+internal fun pas(maxim: Double): Double {
     val passos = listOf(0.1, 0.2, 0.25, 0.5, 1.0, 2.0, 2.5, 5.0, 10.0, 20.0, 25.0, 50.0, 100.0)
     return passos.firstOrNull { maxim / it <= 4 } ?: (ceil(maxim / 4 / 100) * 100)
 }
 
 /** Les etiquetes dels eixos: petites i apagades (maqueta 18). */
-private val EstilEix get() = TextStyle(fontFamily = Inter, fontSize = 10.sp, color = Eix, fontFeatureSettings = "tnum")
+internal val EstilEix get() = TextStyle(fontFamily = Inter, fontSize = 10.sp, color = Eix, fontFeatureSettings = "tnum")
 
 /**
  * La potència d'una estona, amb l'eix en kW a l'esquerra i les hores a sota.

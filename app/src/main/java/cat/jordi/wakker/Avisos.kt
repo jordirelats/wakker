@@ -39,6 +39,12 @@ object Avisos {
     private const val ID_RESUM = 900_002
     const val OBRE = "obre"
     const val ENTRENA = "entrena"
+    private const val CANAL_SESSIO = "sessio"
+    private const val ID_SESSIO = 900_003
+
+    /** Des de la notificació d'una estona d'inici a fi: «L'he apagat» (acaba l'estona) o tocar-la (obre «Per fer»). */
+    const val APAGAT = "apagat"
+    const val INICI = "inici"
 
     fun creaCanal(context: Context) {
         val canal = NotificationChannel(CANAL, context.getString(R.string.avis_canal), NotificationManager.IMPORTANCE_HIGH).apply {
@@ -54,13 +60,46 @@ object Avisos {
         val resum = NotificationChannel(CANAL_RESUM, context.getString(R.string.avis_canal_resum), NotificationManager.IMPORTANCE_DEFAULT).apply {
             description = context.getString(R.string.avis_canal_resum_descripcio)
         }
-        context.getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(canal, potencia, vigilancia, resum))
+        val sessio = NotificationChannel(CANAL_SESSIO, context.getString(R.string.avis_canal_sessio), NotificationManager.IMPORTANCE_LOW).apply {
+            description = context.getString(R.string.avis_canal_sessio_descripcio)
+            setShowBadge(false)
+        }
+        context.getSystemService(NotificationManager::class.java).createNotificationChannels(listOf(canal, potencia, vigilancia, resum, sessio))
     }
 
     fun obreApp(context: Context): PendingIntent = PendingIntent.getActivity(
         context, 1, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
+
+    /**
+     * Mentre s'ensenya un aparell d'inici a fi (maqueta 21): «Wakker aprèn …», amb el temps que fa que és engegat i «L'he
+     * apagat», perquè es pugui dir encara que l'app sigui tancada. No es pot treure lliscant (fins a Android 13).
+     */
+    fun avisaSessio(context: Context, nom: String, desDe: Long) {
+        val gestor = NotificationManagerCompat.from(context)
+        if (!gestor.areNotificationsEnabled()) return
+        val apagat = PendingIntent.getActivity(
+            // Amb l'inici: si l'app es torna a obrir des de les recents amb aquest intent, no ha d'acabar una estona nova
+            context, 3, Intent(context, MainActivity::class.java).putExtra(OBRE, APAGAT).putExtra(INICI, desDe).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val n = NotificationCompat.Builder(context, CANAL_SESSIO)
+            .setSmallIcon(R.drawable.ic_llamp)
+            .setContentTitle(context.getString(R.string.avis_sessio_titol, nom))
+            .setContentText(context.getString(R.string.avis_sessio_text))
+            .setWhen(desDe * 1000)
+            .setUsesChronometer(true)
+            .setShowWhen(true)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(obreEntrena(context))
+            .addAction(0, context.getString(R.string.sessio_apagat), apagat)
+            .build()
+        runCatching { gestor.notify(ID_SESSIO, n) }
+    }
+
+    fun treuSessio(context: Context) = NotificationManagerCompat.from(context).cancel(ID_SESSIO)
 
     /** La potència ha passat del 90 % de la contractada ([limitKw]). [ences]: els aparells que l'expliquen, si se'n sap cap. */
     fun avisaPotencia(context: Context, w: Double, limitKw: Double, ences: List<Pair<String, Double>> = emptyList(), callat: Boolean = false) {

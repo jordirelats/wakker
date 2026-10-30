@@ -74,7 +74,10 @@ import cat.jordi.wakker.ui.PantallaAfegir
 import cat.jordi.wakker.ui.PantallaAparells
 import cat.jordi.wakker.ui.PantallaAra
 import cat.jordi.wakker.ui.PantallaConnecta
+import cat.jordi.wakker.ui.PantallaEdita
 import cat.jordi.wakker.ui.PantallaEspera
+import cat.jordi.wakker.ui.PantallaMarca
+import cat.jordi.wakker.ui.PantallaSessio
 import cat.jordi.wakker.ui.PantallaFitxa
 import cat.jordi.wakker.ui.PantallaHistorial
 import cat.jordi.wakker.ui.PantallaPassat
@@ -139,6 +142,14 @@ class MainActivity : ComponentActivity() {
 
     /** Des d'un avís, l'app s'obre a «Per fer», on hi ha la pregunta. */
     private fun obre(intent: Intent?) {
+        // «L'he apagat» de la notificació d'una estona d'inici a fi (maqueta 21): s'acaba ara i s'obre per revisar-la
+        if (intent?.getStringExtra(Avisos.OBRE) == Avisos.APAGAT && vm.config.configurat) {
+            // Des de les recents torna el mateix intent: només acaba l'estona de la notificació, i una sola vegada
+            val desDeLesRecents = intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY != 0
+            if (!desDeLesRecents && intent.getLongExtra(Avisos.INICI, -1) == vm.config.sessioInici) vm.acabaSessio()
+            intent.removeExtra(Avisos.OBRE)
+            return
+        }
         if (intent?.getStringExtra(Avisos.OBRE) == Avisos.ENTRENA && vm.config.configurat) {
             vm.pantalla = Pantalla.PRINCIPAL
             vm.pestanya = Pestanya.PER_FER
@@ -204,6 +215,9 @@ private fun Arrel(vm: WakkerViewModel) {
         Pantalla.PASSAT -> stringResource(R.string.principal_estona_passada)
         Pantalla.APARELL -> vm.aparells.firstOrNull { it.id == vm.aparellObert }?.nom ?: ""
         Pantalla.ESPERA -> stringResource(R.string.ranquing_sempre)
+        Pantalla.EDITA -> stringResource(R.string.edita_titol)
+        Pantalla.SESSIO -> stringResource(R.string.sessio_apagat)
+        Pantalla.MARCA -> stringResource(R.string.marca_titol)
         Pantalla.PRINCIPAL -> stringResource(if (vm.pestanya == Pestanya.ARA) R.string.principal_casa else vm.pestanya.nomId)
     }
     // L'avís per desfer l'última resposta (maqueta 17): uns 10 segons
@@ -320,6 +334,9 @@ private fun Arrel(vm: WakkerViewModel) {
                 Pantalla.PASSAT -> PantallaPassat(vm)
                 Pantalla.APARELL -> PantallaFitxa(vm)
                 Pantalla.ESPERA -> PantallaEspera(vm)
+                Pantalla.EDITA -> PantallaEdita(vm)
+                Pantalla.SESSIO -> PantallaSessio(vm)
+                Pantalla.MARCA -> PantallaMarca(vm)
                 Pantalla.PRINCIPAL -> when (vm.pestanya) {
                     Pestanya.ARA -> PantallaAra(vm)
                     Pestanya.APARELLS -> PantallaAparells(vm)

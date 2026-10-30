@@ -114,7 +114,7 @@ data class EndollFitxa(
 data class PropostaMoure(val endoll: Endoll, val aparell: Aparell, val apres: QueNHaApres, val suggerits: List<Aparell>)
 
 /** D'on ve una cosa ensenyada: una estona passada, en directe, una resposta (a «Què era?», a l'avís, a un pic) o el que es repeteix. */
-enum class OrigenEnsenyat { ESTONA, DIRECTE, VEGADA, PREGUNTA, PIC, REPETIT, RESPOSTA }
+enum class OrigenEnsenyat { ESTONA, DIRECTE, VEGADA, PREGUNTA, PIC, REPETIT, RESPOSTA, SESSIO }
 
 /** Una cosa que l'usuari ha ensenyat d'un aparell (maqueta 17): les seves mostres i el que en va dir (les etiquetes). */
 data class Ensenyat(val origen: OrigenEnsenyat, val desDe: Long, val finsA: Long, val mostres: List<Mostra>, val etiquetes: List<Etiqueta>)
@@ -129,7 +129,12 @@ data class Desfer(
     val tornaEtiquetes: List<Etiqueta> = emptyList(), val tornaMostres: List<Mostra> = emptyList(),
     val pregunta: Long? = null, val repetit: Long? = null, val aparellAbans: Aparell? = null, val aparellNou: Long? = null,
     val ignorada: Long? = null,
+    /** Una estona d'inici a fi desada: desfer-ho la torna a deixar per revisar (maqueta 21). */
+    val sessio: SessioDesada? = null,
 )
+
+/** Una estona d'inici a fi tal com era a la configuració abans de desar-la. */
+data class SessioDesada(val aparellId: Long, val inici: Long, val fi: Long, val base: Double)
 
 /**
  * Les vegades que encara duraven a l'últim minut del Shelly (maqueta 15), si aquest minut és de fa poc ([fresques]: a casa,
@@ -732,11 +737,14 @@ class Repositori(val config: Config, private val bd: BaseDades) {
     }
 
     fun esborraAparell(id: Long) {
+        val sessions = bd.etiquetes().filter { it.aparellId == id && it.sessio != null }
         bd.esborraAparell(id)
         bd.esborraEtiquetes(id)
         // El seu endoll, si en tenia, queda sense aparell (maqueta 19)
         bd.treuEndollsDe(id, ara())
+        if (config.sessioAparell == id) oblidaSessio()
         haCanviat()
+        rebusca(sessions)
     }
 
     // ---------- Les vegades (maqueta 13) ----------
@@ -814,24 +822,101 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         val fins = if (rebuscar || !bd.hiHaVegades()) 0L else config.vegadesFins
         val desDe = if (fins == 0L) bd.primerExacte() ?: return
         else minOf(bd.vegadaOberta(fins - 30 * 60) ?: fins, fins - 30 * 60)
-        val canals = if (config.teLinia) listOf(0 to false, 1 to true) else listOf(0 to false)
+        val canals = canals()
+        val sessions = sessionsDesades(canals)
         val noves = mutableListOf<Vegada>()
         var s = desDe
-        while (s <= darrer) {
-            val e = minOf(s + 7 * 86400, darrer + 60)
-            // Primer on s'acaben les que comencen dins del tros; després, totes les que comencen abans d'aquell punt: també les
-            // que s'han encès a sobre d'una de llarga després del final del tros (el tros següent comença on acaba la llarga)
-            val perCanal = canals.map { (canal, linia) -> canal to Episodis.troba(bd.minutsW(linia, s - 2 * 3600, e + 24 * 3600), llargada = 2) }
-            var seguent = e
-            for ((_, trobades) in perCanal) {
-                trobades.filter { it.ts in s until e && it.fi >= e }.maxOfOrNull { it.fi + 60 }?.let { seguent = maxOf(seguent, it) }
-            }
-            for ((canal, trobades) in perCanal) trobades.filter { it.ts in s until seguent }.forEach { noves += Vegada.de(canal, it) }
-            s = seguent
-        }
+        while (s <= darrer) s = cercaTros(s, minOf(s + 7 * 86400, darrer + 60), canals, sessions, noves)
+        noves.sortBy { it.ts }
         bd.substitueixVegades(desDe, assignaTotes(noves))
         config.vegadesFins = darrer
         config.versioVegades = VERSIO_VEGADES
+    }
+
+    private fun canals() = if (config.teLinia) listOf(0 to false, 1 to true) else listOf(0 to false)
+
+    /** Les estones d'inici a fi desades (maqueta 21): cadascuna és una sola vegada, i el que hi havia a dins, fora (tret del que no era seu). */
+    private fun sessionsDesades(canals: List<Pair<Int, Boolean>>) =
+        bd.etiquetes().filter { it.sessio != null && !it.no && canals.any { c -> c.first == it.canal } }
+
+    /**
+     * Un aparell que s'ha dit «Ja està engegat» des d'una hora potser ja anava uns minuts abans: el que comença fins a un quart
+     * d'hora abans és seu. El que ja anava de més abans (el cotxe carregant), per defecte no.
+     */
+    private val MARGE_SESSIO = 15 * 60L
+
+    /**
+     * Les vegades que comencen d'[s] a [e] (afegides a [noves]); torna on comença el tros següent (més enllà d'[e] si alguna
+     * vegada o estona d'inici a fi hi passa). Primer on s'acaben les que comencen dins del tros; després, totes les que comencen
+     * abans d'aquell punt: també les que s'han encès a sobre d'una de llarga després del final del tros.
+     */
+    private fun cercaTros(s: Long, e: Long, canals: List<Pair<Int, Boolean>>, sessions: List<Etiqueta>, noves: MutableList<Vegada>): Long {
+        val perCanal = canals.map { (canal, linia) -> canal to Episodis.troba(bd.minutsW(linia, s - 2 * 3600, e + 24 * 3600), llargada = 2) }
+        var seguent = e
+        for ((_, trobades) in perCanal) {
+            trobades.filter { it.ts in s until e && it.fi >= e }.maxOfOrNull { it.fi + 60 }?.let { seguent = maxOf(seguent, it) }
+        }
+        val delTros = sessions.filter { it.desDe in s until e }
+        delTros.maxOfOrNull { it.finsA + 1 }?.let { seguent = maxOf(seguent, it) }
+        for ((canal, trobades) in perCanal) {
+            val seves = delTros.filter { it.canal == canal }
+            // Una vegada d'una estona que no compta: la que hi cap (com a molt 2 minuts més a cada costat)
+            fun dinsDe(ep: Episodi, f: Pair<Long, Long>) = ep.ts >= f.first - 120 && ep.fi <= f.second + 120
+            // El que toca una estona d'inici a fi és seu, tret del que l'usuari va dir que no ho era, i del que en surt més d'un
+            // quart d'hora per un costat (el cotxe que ja carregava, l'aparell que no es va apagar quan es va dir): aquell es
+            // queda, i els seus minuts no compten a l'estona. Si no, l'energia d'aquells minuts sortiria dues vegades (1.4.0)
+            fun toca(ep: Episodi, se: Etiqueta) = ep.ts <= se.finsA && ep.fi >= se.desDe - 60
+            fun surt(ep: Episodi, se: Etiqueta) = ep.ts < se.desDe - MARGE_SESSIO || ep.fi > se.finsA + MARGE_SESSIO
+            trobades.filter { ep ->
+                ep.ts in s until seguent && seves.none { se -> toca(ep, se) && !surt(ep, se) && se.sessio!!.none { f -> dinsDe(ep, f) } }
+            }.forEach { noves += Vegada.de(canal, it) }
+            for (se in seves) {
+                val queSurten = trobades.filter { toca(it, se) && surt(it, se) }.map { it.ts to it.fi }
+                vegadaSessio(se, queSurten)?.let { noves += it }
+                // El que no comptava i no és cap vegada a part (anava dins de la de l'aparell): una vegada feta amb els seus minuts
+                val linia = canal == 1
+                for (f in se.sessio!!) {
+                    // Si ja hi ha una vegada seva, o una que es queda i la cobreix (la porta dins), no se'n fa cap altra
+                    if (trobades.any { dinsDe(it, f) } || queSurten.any { (a, b) -> a <= f.second && b >= f.first }) continue
+                    val minuts = bd.minutsW(linia, f.first, f.second + 60)
+                    if (minuts.size < 2) continue
+                    val base = Sessio.base(bd.minutsW(linia, se.desDe - Sessio.ABANS, se.desDe), minuts)
+                    noves += Sessio.vegadaDe(canal, minuts, base)
+                }
+            }
+        }
+        return seguent
+    }
+
+    /** La vegada d'una estona d'inici a fi desada ([Etiqueta.sessio]), amb els minuts exactes d'ara. */
+    private fun vegadaSessio(e: Etiqueta, mesFora: List<Pair<Long, Long>> = emptyList()): Vegada? {
+        val linia = e.canal == 1
+        val abans = bd.minutsW(linia, e.desDe - Sessio.ABANS, e.desDe)
+        val dins = bd.minutsW(linia, e.desDe, e.finsA + 1)
+        return Sessio.calcula(e.canal, Sessio.base(abans, dins), dins, e.sessio.orEmpty() + mesFora)?.vegada
+    }
+
+    /**
+     * Torna a buscar les vegades d'una estona d'inici a fi que s'ha desat, tret o tornat a posar: la vegada sencera (o el que
+     * hi havia a dins) ha de canviar, no només de qui és. Només l'estona (amb les vegades que la toquen), no tot el que ve
+     * després; i no si els minuts ja s'han esborrat (de fa més de 400 dies): les vegades d'aleshores es queden.
+     */
+    private fun rebusca(etiquetes: Collection<Etiqueta>) {
+        val tocades = etiquetes.filter { it.sessio != null }
+        if (tocades.isEmpty()) return
+        synchronized(bloqueigVegades) {
+            val primer = bd.primerExacte() ?: return
+            val canals = canals()
+            val sessions = sessionsDesades(canals)
+            for (et in tocades) {
+                // Des de la primera vegada que toca l'estona (també la d'abans, que pot venir del marge d'un quart d'hora)
+                val a = minOf(et.desDe - MARGE_SESSIO, bd.vegades(et.desDe - MARGE_SESSIO, et.finsA + 1).minOfOrNull { it.ts } ?: et.desDe)
+                if (a < primer + 2 * 3600) continue
+                val noves = mutableListOf<Vegada>()
+                val fins = cercaTros(a, et.finsA + 1, canals, sessions, noves)
+                bd.substitueixVegades(a, assignaTotes(noves.filter { it.ts < fins }.sortedBy { it.ts }), fins)
+            }
+        }
     }
 
     /** De qui és cada vegada, amb el que l'app sap ara ([assigna]). */
@@ -922,7 +1007,9 @@ class Repositori(val config: Config, private val bd: BaseDades) {
             haCanviat()
             Desfer(etiquetes = listOf(no), tornaEtiquetes = etiquetes, tornaMostres = mostres)
         }
-        // Repartir de nou pot trigar: fora del bloqueig del repositori, que aturaria les lectures en directe
+        // Repartir de nou pot trigar: fora del bloqueig del repositori, que aturaria les lectures en directe. Si era una estona
+        // d'inici a fi, el que hi havia a dins torna a ser vegades soltes
+        rebusca(d.tornaEtiquetes)
         reassignaVegades()
         return d
     }
@@ -943,8 +1030,10 @@ class Repositori(val config: Config, private val bd: BaseDades) {
      * mentrestant se n'ha canviat una altra cosa, es queda.
      */
     fun desfes(d: Desfer) {
-        synchronized(this) {
+        val sessions = synchronized(this) {
             val existeixen = bd.aparells().associateBy { it.id }
+            // Les estones d'inici a fi que es treuen o es tornen a posar: les vegades s'han de tornar a buscar
+            val tretes = bd.etiquetes().filter { it.id in d.etiquetes && it.sessio != null }
             bd.esborra(d.etiquetes, d.mostres)
             d.tornaEtiquetes.filter { it.aparellId in existeixen }.forEach { bd.desaEtiqueta(it) }
             d.tornaMostres.filter { it.aparellId in existeixen }.forEach { m ->
@@ -963,8 +1052,16 @@ class Repositori(val config: Config, private val bd: BaseDades) {
                 bd.esborraEtiquetes(it)
             }
             d.ignorada?.let { ts -> config.senseNomIgnorades = config.senseNomIgnorades - ts }
+            d.sessio?.takeIf { it.aparellId in existeixen && config.sessioAparell == 0L }?.let {
+                config.sessioAparell = it.aparellId
+                config.sessioInici = it.inici
+                config.sessioFi = it.fi
+                config.sessioBase = it.base
+            }
             haCanviat()
+            tretes + d.tornaEtiquetes.filter { it.aparellId in existeixen }
         }
+        rebusca(sessions)
         reassignaVegades()
     }
 
@@ -1010,12 +1107,14 @@ class Repositori(val config: Config, private val bd: BaseDades) {
                 "vegada" -> OrigenEnsenyat.VEGADA
                 "pregunta" -> OrigenEnsenyat.PREGUNTA
                 "pic" -> OrigenEnsenyat.PIC
+                "sessio" -> OrigenEnsenyat.SESSIO
                 "repetit" -> OrigenEnsenyat.REPETIT
                 else -> OrigenEnsenyat.RESPOSTA
             }
             val es = etiquetes.filter { e -> e.id !in usades && ms.any { lliga(e, it) } }
             usades += es.map { it.id }
-            llista += Ensenyat(origen, ms.minOf { iniciMostra(it) }, ms.maxOf { it.ts }, ms, es)
+            // Fins on arriba: l'última mostra o, d'una estona d'inici a fi, la seva etiqueta
+            llista += Ensenyat(origen, ms.minOf { iniciMostra(it) }, maxOf(ms.maxOf { it.ts }, es.maxOfOrNull { it.finsA } ?: 0), ms, es)
         }
         llista += etiquetes.filter { it.id !in usades }.map { Ensenyat(OrigenEnsenyat.RESPOSTA, it.desDe, it.finsA, emptyList(), listOf(it)) }
         return llista.sortedByDescending { it.desDe }
@@ -1028,6 +1127,7 @@ class Repositori(val config: Config, private val bd: BaseDades) {
             haCanviat()
             Desfer(tornaEtiquetes = e.etiquetes, tornaMostres = e.mostres)
         }
+        rebusca(e.etiquetes)
         reassignaVegades()
         return d
     }
@@ -1583,11 +1683,15 @@ class Repositori(val config: Config, private val bd: BaseDades) {
     }
 
     /** Torna a començar: fora les mostres i el que l'usuari n'havia dit. */
-    @Synchronized
     fun tornaAEntrenar(aparellId: Long) {
-        bd.esborraMostres(aparellId)
-        bd.esborraEtiquetes(aparellId)
-        haCanviat()
+        val sessions = synchronized(this) {
+            val sessions = bd.etiquetes().filter { it.aparellId == aparellId && it.sessio != null }
+            bd.esborraMostres(aparellId)
+            bd.esborraEtiquetes(aparellId)
+            haCanviat()
+            sessions
+        }
+        rebusca(sessions)
     }
 
     fun preguntesPendents() = bd.preguntes(EstatPregunta.PENDENT)
@@ -1804,6 +1908,163 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         }
         haCanviat()
         return Desfer(etiquetes, mostres)
+    }
+
+    // ---------- Ensenyar d'inici a fi (maqueta 21) ----------
+
+    /** El canal d'un aparell: el de la línia de la pinça 2 si hi és, o la resta de la casa. */
+    private fun canalDe(a: Aparell) = if (aLaLinia(a)) 1 else 0
+
+    /**
+     * Comença a ensenyar un aparell d'inici a fi: «Ara l'engego» (ara) o «Ja està engegat» ([desDe], abans). La base de la
+     * casa és la mediana de la mitja hora d'abans, si ja hi ha els minuts (si no, -1, i la pantalla fa servir les lectures).
+     */
+    fun comencaSessio(aparellId: Long, desDe: Long) {
+        val a = bd.aparells().firstOrNull { it.id == aparellId } ?: return
+        // No pot començar dins d'una estona d'inici a fi ja desada del mateix canal: els minuts serien de dues alhora
+        val inici = bd.etiquetes().filter { it.sessio != null && !it.no && it.canal == canalDe(a) && it.finsA >= desDe && it.desDe <= ara() }
+            .maxOfOrNull { it.finsA + 1 }?.let { maxOf(it, desDe) } ?: desDe
+        val abans = bd.minutsW(canalDe(a) == 1, inici - Sessio.ABANS, inici)
+        config.sessioAparell = aparellId
+        config.sessioInici = inici
+        config.sessioFi = 0
+        config.sessioBase = if (abans.size >= 5) mediana(abans.map { it.w }) else -1.0
+    }
+
+    /** «L'he apagat»: l'estona acaba ara (o a [finsA]) i queda per revisar. */
+    fun acabaSessio(finsA: Long = ara()) {
+        if (config.sessioAparell != 0L && config.sessioFi == 0L) config.sessioFi = maxOf(finsA, config.sessioInici + 60)
+    }
+
+    /** Ni l'estona ni el que n'hagi sortit: com si no s'hagués començat. */
+    fun oblidaSessio() {
+        config.sessioAparell = 0
+        config.sessioInici = 0
+        config.sessioFi = 0
+        config.sessioBase = -1.0
+    }
+
+    /**
+     * L'estona d'inici a fi que s'ha acabat, per revisar-la: els minuts del canal de l'aparell des del minut en què es va
+     * engegar fins al que es va apagar, la base de la mitja hora d'abans, i les vegades de dins que no semblen seves (les
+     * d'un altre aparell segons l'usuari o un endoll, i les massa grosses per a ell). Null si no n'hi ha cap d'acabada.
+     */
+    fun estonaSessio(): EstonaSessio? {
+        val a = bd.aparells().firstOrNull { it.id == config.sessioAparell } ?: return null
+        val fi = config.sessioFi.takeIf { it > 0 } ?: return null
+        val canal = canalDe(a)
+        val desDe = config.sessioInici / 60 * 60
+        val linia = canal == 1
+        val abans = bd.minutsW(linia, desDe - Sessio.ABANS, desDe)
+        val dins = bd.minutsW(linia, desDe, fi)
+        val serie = bd.serie(desDe - Sessio.ABANS, fi + 60)
+        val esperats = ((fi - desDe) / 60).coerceAtLeast(1)
+        // Des de fora de casa no hi ha els minuts exactes: s'espera que el mòbil torni a la wifi de casa
+        val aproximada = serie.any { it.ts >= desDe && it.aprox } || dins.size < esperats * 0.8
+        val base = Sessio.base(abans, dins)
+        val nivell = Sessio.nivell(dins, base)
+        val r = (if (linia) referenciesLinia() else referencies())[a.id]
+        val limit = maxOf(a.wTipic * 1.3, (r?.max ?: 0.0) * 1.15)
+        val vegades = bd.vegades(desDe, fi).filter { it.canal == canal }
+        // El que ja anava de més d'un quart d'hora abans no és seu (per defecte): el cotxe que carregava
+        val alienes = (vegades.filter { it.ts < desDe - MARGE_SESSIO } + Sessio.alienes(vegades, dins, base, desDe, fi, a.id, nivell, limit))
+            .distinctBy { it.ts to it.fi }.sortedBy { it.ts }
+        val punts = serie.map { it.ts to if (linia) it.wLinia else max(it.wTotal - (if (config.teLinia) it.wLinia else 0.0), 0.0) }
+        return EstonaSessio(a.id, canal, desDe, fi, base, punts, dins, alienes, aproximada)
+    }
+
+    /**
+     * Desa l'estona d'inici a fi: una etiqueta de tota l'estona (amb les vegades de [fora], que no compten) i una mostra amb
+     * la firma (la potència de quan funciona, entre quins W va, i la durada si no va a cicles). Tota l'estona passa a ser
+     * una sola vegada de l'aparell. Null si no s'hi veu res.
+     */
+    fun desaSessio(e: EstonaSessio, fora: List<Vegada>): Desfer? {
+        val f = e.firma(fora) ?: return null
+        val v = f.vegada
+        val etiqueta = Etiqueta(e.canal, v.ts, v.fi + 59, e.aparellId, sessio = fora.map { it.ts to it.fi })
+        val d = synchronized(this) {
+            val id = bd.desaEtiqueta(etiqueta)
+            val mostra = bd.desaMostra(
+                e.aparellId, v.ts, v.w, if (f.aCicles) null else v.fi + 60 - v.ts, "sessio", f.wMin to f.wMax, v.variacio, v.arrencada,
+            )
+            // Desfer-ho torna l'estona a «per revisar»
+            val estona = SessioDesada(e.aparellId, config.sessioInici, config.sessioFi, config.sessioBase)
+            oblidaSessio()
+            haCanviat()
+            Desfer(listOf(id), listOf(mostra), sessio = estona)
+        }
+        // Fora del bloqueig del repositori: buscar les vegades de nou pot trigar
+        rebusca(listOf(etiqueta))
+        reassignaVegades()
+        return d
+    }
+
+    /** Com quadra el que l'usuari diu que hi ha encès amb el que veia Wakker (maqueta 21). */
+    enum class EstatMarca {
+        /** Wakker ja el veia (una vegada seva, o el compressor de la nevera). */
+        QUADRA,
+
+        /** Era una cosa que Wakker veia sense nom: ara ja és seva. */
+        ERA_SENSE_NOM,
+
+        /** Wakker no hi veia res seu: és petit (va als petits consums) o fa estona que és engegat i varia. */
+        NO_VIST,
+    }
+
+    data class FilaMarca(val aparell: Aparell, val estat: EstatMarca, val w: Double? = null)
+
+    /**
+     * «Què hi ha encès ara?» (maqueta 21): els aparells que l'usuari sap segur que funcionen ara ([ids]). Cada un es compara
+     * amb el que veia Wakker ([encesDelCanal], com la pantalla Ara): si una vegada que encara dura ja és seva, quadra; si
+     * n'hi ha una sense nom, la que s'hi assembla més passa a ser seva (una etiqueta al seu inici i una mostra amb la seva
+     * potència); si no, no se'n diu res. Que un aparell no estigui marcat no vol dir que estigui apagat. Null si les dades no
+     * són d'ara (a fora de casa).
+     */
+    fun marcaEncesos(ids: Set<Long>, l: Lectura): Pair<List<FilaMarca>, Desfer?>? {
+        val o = obertes()
+        val fons = fonsW()
+        if (!o.fresques || fons == null) return null
+        val ara = ara()
+        val tots = bd.aparells().filter { it.id in ids }
+        val wLinia = if (config.teLinia) (l.linia?.w ?: 0.0).coerceAtLeast(0.0) else 0.0
+        val ences = encesDelCanal(ara, 0, l.total.w - wLinia - fons, o.vegades, aparellsAEntrenar(), referencies(), o.neveraW) +
+            (if (config.teLinia) encesDelCanal(ara, 1, wLinia, o.vegades, aparellsLinia(), referenciesLinia()) else emptyList())
+        val usades = mutableSetOf<EncesAra>()
+        val files = mutableListOf<FilaMarca>()
+        val etiquetes = mutableListOf<Long>()
+        val mostres = mutableListOf<Long>()
+        val refs = referencies() + referenciesLinia()
+        synchronized(this) {
+            // Primer els que ja quadren, perquè no s'emportin una cosa sense nom que és d'un altre
+            val pendents = mutableListOf<Aparell>()
+            for (a in tots) {
+                val seva = ences.firstOrNull { it.aparellId == a.id && it !in usades }
+                    ?: ences.firstOrNull { it.tipus == TipusEnces.NEVERA && o.nevera?.id == a.id && it !in usades }
+                if (seva != null) {
+                    usades += seva
+                    files += FilaMarca(a, EstatMarca.QUADRA, seva.w)
+                } else pendents += a
+            }
+            for (a in pendents) {
+                val canal = canalDe(a)
+                val sense = ences.filter {
+                    it.canal == canal && it !in usades && (it.tipus == TipusEnces.SENSE_IDENTIFICAR || it.tipus == TipusEnces.NOU)
+                }.minByOrNull { distancia(it.w, it.vegada?.minuts?.toDouble(), it.vegada?.forma, a, refs[a.id]) }
+                if (sense == null || a.funciona == Funcionament.SEMPRE) {
+                    files += FilaMarca(a, EstatMarca.NO_VIST)
+                    continue
+                }
+                usades += sense
+                // Una vegada que encara dura: l'etiqueta a l'inici; una cosa que s'acaba d'encendre (encara no és vegada), fa poc
+                val inici = sense.vegada?.ts ?: (ara - 120)
+                etiquetes += bd.desaEtiqueta(Etiqueta(canal, inici, inici, a.id))
+                mostres += bd.desaMostra(a.id, inici, sense.w, null, "marca")
+                files += FilaMarca(a, EstatMarca.ERA_SENSE_NOM, sense.w)
+            }
+            if (etiquetes.isNotEmpty()) haCanviat()
+        }
+        if (etiquetes.isNotEmpty()) reassignaVegades()
+        return files to (if (etiquetes.isEmpty()) null else Desfer(etiquetes, mostres))
     }
 
     // ---------- Els endolls amb mesura (maqueta 19) ----------

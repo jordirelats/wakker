@@ -187,6 +187,8 @@ fun PantallaAra(vm: WakkerViewModel) {
 
         // El dilluns (i fins que l'ha vist), el resum de la setmana passada en una línia (maqueta 15)
         vm.resumSetmana?.let { BannerSetmana(vm, it) }
+        // L'aparell que s'ensenya d'inici a fi (maqueta 21)
+        TargetaSessio(vm)
 
         // Les últimes 24 hores, suavitzades i a l'escala del dia
         Surface(Modifier.fillMaxWidth(), shape = RoundedCornerShape(16.dp), color = Superficie, border = BorderStroke(1.dp, Vora)) {

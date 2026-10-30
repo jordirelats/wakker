@@ -28,6 +28,11 @@ data class Referencia(
     val aparellId: Long, val w: Double, val mostres: Int, val duradaMin: Double?,
     val wMin: Double? = null, val wMax: Double? = null, val automatica: Boolean = false,
     val variacio: Double? = null, val arrencada: Double? = null,
+    /**
+     * Només se'n sap una estona d'inici a fi que variava (maqueta 21): no en sabem la durada de cada cop, i el seu interval
+     * (l'aire, 75–340 W) no s'ha d'emportar qualsevol cosa curta d'aquella potència. Les vegades més curtes, no.
+     */
+    val minMinuts: Int? = null,
 ) {
     /** Amb tres mostres ja es considera après; si l'ha trobat sola o en sap l'interval, també. */
     val apresa get() = mostres >= PER_APRENDRE || automatica || wMin != null
@@ -46,13 +51,16 @@ data class Referencia(
             // En directe, la durada és des que es va marcar «L'he encès» fins a «L'he apagat», no el que dura cada vegada
             // (una rentadora: 90 minuts, amb escalfaments de 15): no compta per a la firma
             val durades = mostres.filter { it.font != "directe" }.mapNotNull { it.durada }
-            val amb = if (ambInterval) mostres.filter { it.wMin != null && it.wMax != null } else emptyList()
+            // L'interval d'una estona d'inici a fi (maqueta 21) val sempre: un aire inverter que l'engega l'usuari també va
+            // entre 200 i 450 W
+            val amb = mostres.filter { (ambInterval || it.font == "sessio") && it.wMin != null && it.wMax != null }
             return Referencia(
                 aparellId, mediana(mostres.map { it.dp }), mostres.size,
                 durades.takeIf { it.isNotEmpty() }?.let { mediana(it.map(Long::toDouble)) / 60 },
                 wMin = amb.minOfOrNull { it.wMin!! }, wMax = amb.maxOfOrNull { it.wMax!! },
                 variacio = mostres.mapNotNull { it.variacio }.takeIf { it.isNotEmpty() }?.let(::mediana),
                 arrencada = mostres.mapNotNull { it.arrencada }.takeIf { it.isNotEmpty() }?.let(::mediana),
+                minMinuts = if (durades.isEmpty() && mostres.any { it.font == "sessio" }) 10 else null,
             )
         }
     }

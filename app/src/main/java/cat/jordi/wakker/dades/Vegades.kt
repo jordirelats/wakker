@@ -94,7 +94,7 @@ class IndexEtiquetes(etiquetes: List<Etiqueta>) {
  */
 fun assigna(
     v: Vegada, candidats: List<Aparell>, refs: Map<Long, Referencia>, etiquetes: List<Etiqueta>, exclosos: Set<Long> = emptySet(),
-    endoll: Long? = null, noEndoll: Set<Long> = emptySet(),
+    endoll: Long? = null, noEndoll: Set<Long> = emptySet(), oberta: Boolean = false,
 ): Pair<Long?, Com?> {
     val seves = etiquetes.filter { it.canal == v.canal && it.aparellId !in exclosos && it.aparellId !in noEndoll }
         .map { it to encavalca(v, it) }.filter { it.second > 0 }
@@ -106,7 +106,8 @@ fun assigna(
         val r = refs[a.id] ?: return@filter false
         if (a.id in no) return@filter false
         val potencia = if (r.wMin != null) v.w in r.min * 0.85..r.max * 1.15 else v.w in r.w / 1.3..r.w * 1.3
-        val durada = r.duradaMin?.let { d -> v.minuts.toDouble() in (d / 3 - 1)..(d * 3 + 1) } ?: true
+        // Una vegada que encara dura (una càrrega del cotxe que fa una hora) no se sap quant durarà: només el màxim
+        val durada = r.duradaMin?.let { d -> if (oberta) v.minuts <= d * 3 + 1 else v.minuts.toDouble() in (d / 3 - 1)..(d * 3 + 1) } ?: true
         val f = v.forma
         val forma = r.forma == null || f == null || (f == Forma.POLSA) == (r.forma == Forma.POLSA)
         potencia && durada && forma

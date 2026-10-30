@@ -183,6 +183,11 @@ class Config(context: Context) {
         get() = text("endolls_sense_potencia").split(",").filter { it.isNotBlank() }.toSet()
         set(v) = desa("endolls_sense_potencia", v.sorted().joinToString(","))
 
+    /** Des de quan s'intenta esbrinar com entén l'endoll els timestamps (0: encara no). */
+    var endollsHoraDesDe: Long
+        get() = p.getLong("endolls_hora_des_de", 0)
+        set(v) = p.edit().putLong("endolls_hora_des_de", v).apply()
+
     /** Les propostes de moure un endoll que l'usuari ha dit de deixar com són («endoll:aparell»). */
     var moureIgnorats: Set<String>
         get() = text("moure_ignorats").split(",").filter { it.isNotBlank() }.toSet()

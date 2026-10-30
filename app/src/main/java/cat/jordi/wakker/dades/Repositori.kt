@@ -856,22 +856,25 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         val periodesLinia = totsPeriodes.filter { p -> linia.any { it.id == p.aparellId } }
         val dades = HashMap<Long, DadesEndoll>()
         val hores = perHora(vegades)
+        // L'últim minut de cada canal: una vegada que hi arriba encara dura
+        val darrers = mapOf(0 to bd.darrerTs(0), 1 to bd.darrerTs(1))
         return vegades.map { v ->
+            val oberta = darrers[v.canal]?.let { v.fi >= it - 120 } ?: false
             val e = index.de(v)
             val (a, com) = when {
                 // Només les etiquetes dels aparells que hi ha ara a la línia: si s'han tret, la línia sencera ja surt com un més
                 // al rànquing, i comptar-la també a l'aparell la sumaria dues vegades (1.1.3)
                 v.canal == 1 -> {
                     val (endoll, noEndoll) = veredictes(v, periodesLinia, dades, altresWh(v, hores))
-                    assigna(v, linia, refsLinia, e.filter { et -> linia.any { it.id == et.aparellId } }, exclosos, endoll, noEndoll)
+                    assigna(v, linia, refsLinia, e.filter { et -> linia.any { it.id == et.aparellId } }, exclosos, endoll, noEndoll, oberta)
                 }
                 abansDeLaLinia(v, iniciLinia) -> {
                     val (endoll, noEndoll) = veredictes(v, totsPeriodes, dades, altresWh(v, hores))
-                    assigna(v, tots, refsTots, e, exclosos, endoll, noEndoll)
+                    assigna(v, tots, refsTots, e, exclosos, endoll, noEndoll, oberta)
                 }
                 else -> {
                     val (endoll, noEndoll) = veredictes(v, periodesCasa, dades, altresWh(v, hores))
-                    assigna(v, casa, refsCasa, e, exclosos, endoll, noEndoll)
+                    assigna(v, casa, refsCasa, e, exclosos, endoll, noEndoll, oberta)
                 }
             }
             v.copy(aparellId = a, com = com)
@@ -2056,6 +2059,9 @@ class Repositori(val config: Config, private val bd: BaseDades) {
      * consum avui), es torna a provar al cap d'una hora; mentrestant no es desa cap hora.
      */
     private fun esbrinaHora(t: LectorEndoll, l: LecturaEndoll) {
+        if (config.endollsHoraDesDe == 0L) config.endollsHoraDesDe = ara()
+        // Un dia sense poder-ho decidir (un endoll que gairebé no gasta): les de debò
+        if (config.endollsHoraDesDe < ara() - 86400) { config.endollHoraLocal = 1; return }
         val avui = l.whAvui ?: return
         if (avui < 5 || ara() - esbrinatA < 3600) return
         esbrinatA = ara()
@@ -2066,12 +2072,16 @@ class Repositori(val config: Config, private val bd: BaseDades) {
         val eUtc = abs(utc - avui)
         val eLoc = abs(loc - avui)
         val tolerancia = max(30.0, 0.2 * avui)
+        // Amb un consum pla (una tele, un endoll que gasta sempre igual), les dues maneres donen gairebé el mateix i
+        // abans no es decidia mai: no es desava cap hora i Wakker només comptava les lectures en directe (molt menys
+        // que l'app de Tapo). Ara, si totes dues quadren, la que s'equivoca menys; si cap no quadra, es torna a provar
+        // d'aquí a una hora, i després d'un dia sense decidir, la d'avui del crate tapo (segons de debò)
         config.endollHoraLocal = when {
-            eUtc <= tolerancia && eLoc <= tolerancia && abs(eUtc - eLoc) < 1 -> 1 // iguals (una zona sense desfàs): tant se val
-            eUtc <= tolerancia && eUtc * 2 <= eLoc -> 1
-            eLoc <= tolerancia && eLoc * 2 <= eUtc -> 2
+            eUtc <= tolerancia || eLoc <= tolerancia -> if (eLoc < eUtc) 2 else 1
+            config.endollsHoraDesDe in 1 until ara() - 86400 -> 1
             else -> 0
         }
+        if (config.endollsHoraDesDe == 0L) config.endollsHoraDesDe = ara()
     }
 
     /**

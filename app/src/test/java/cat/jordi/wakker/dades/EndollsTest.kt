@@ -94,6 +94,16 @@ class EndollsTest {
     }
 
     @Test
+    fun unaCarregaQueEncaraDuraEsDelCotxe() {
+        // El cotxe après carrega unes 6 hores; una càrrega que fa 77 minuts i encara dura és seva
+        val cotxe = Aparell(3, "Cotxe", Categoria.COTXE, Font.TIPIC, 2000.0)
+        val refs = mapOf(3L to Referencia(3, 2250.0, 3, 360.0))
+        val v = Vegada(0, 1, t0, t0 + 76 * 60, 77, 2259.0, 2.9, 0.01, 1.0)
+        assertNull(assigna(v, listOf(cotxe), refs, emptyList()).first)
+        assertEquals(3L to Com.RECONEGUT, assigna(v, listOf(cotxe), refs, emptyList(), oberta = true))
+    }
+
+    @Test
     fun lUsDUnaTele() {
         // 24 hores: 20 h a 0,8 W (espera) i 4 h a 85 W
         val m = (0 until 24 * 60).map { i -> MinutEndoll(t0 + i * 60L, (if (i % 1440 < 240) 85.0 else 0.8) / 60) }

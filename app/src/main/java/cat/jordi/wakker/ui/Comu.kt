@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -277,7 +278,8 @@ fun Bombolla(icona: ImageVector, fons: Color, color: Color) {
 @Composable
 fun Etiqueta(text: String) {
     Text(
-        text, Modifier.clip(RoundedCornerShape(6.dp)).background(GrisFluix).padding(horizontal = 6.dp, vertical = 1.dp),
+        // Amb un tope d'amplada: un nom de línia llarg («garatge, cotxe, calentador…») s'esclafava el nom de l'aparell
+        text, Modifier.widthIn(max = 110.dp).clip(RoundedCornerShape(6.dp)).background(GrisFluix).padding(horizontal = 6.dp, vertical = 1.dp),
         fontSize = 10.5.sp, fontWeight = FontWeight.Medium, color = Suau, maxLines = 1, overflow = TextOverflow.Ellipsis,
     )
 }
